@@ -39,6 +39,10 @@ app.use('/api/tasks', taskRoutes);
 app.use('/api/metrics', metricsRoutes);
 app.use('/api/user', userRoutes);
 
+app.get('/api/health', (req, res) => {
+    res.status(200).json({ message: "Backend is up and running" });
+  });
+
 // Middleware de manejo de errores
 app.use((err, req, res, next) => {
   console.error(err.stack);
