@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Clock, DollarSign, ListTodo } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
@@ -48,7 +48,7 @@ export default function DashboardPage() {
       setWeeklyMetrics(weekly);
       setMonthlyMetrics(monthly);
     } catch (err) {
-      toast.error("Error al cargar las métricas");
+      toast.error(err instanceof Error ? err.message : "Error al cargar las métricas");
     } finally {
       setIsLoading(false);
     }

@@ -54,7 +54,7 @@ export default function EditTaskPage({ params }: { params: { id: string } }) {
         const data = await response.json();
         setUserProfile(data);
       } catch (err) {
-        toast.error("Error al cargar el perfil del usuario");
+        toast.error(err instanceof Error ? err.message : "Error al cargar el perfil del usuario");
       } finally {
         setIsLoadingProfile(false);
       }
@@ -97,7 +97,7 @@ export default function EditTaskPage({ params }: { params: { id: string } }) {
         setMonto(data.monto);
         setDescripcion(data.descripcion);
       } catch (err) {
-        toast.error("Error al cargar la tarea");
+        toast.error(err instanceof Error ? err.message : "Error al cargar la tarea");
         router.push("/tasks");
       } finally {
         setIsLoading(false);
@@ -153,7 +153,7 @@ export default function EditTaskPage({ params }: { params: { id: string } }) {
       
       router.push("/tasks");
     } catch (err) {
-      toast.error("Error al actualizar la tarea");
+      toast.error( err instanceof Error ? err.message : "Error al actualizar la tarea");
     } finally {
       setIsSaving(false);
     }

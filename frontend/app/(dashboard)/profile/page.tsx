@@ -43,7 +43,7 @@ export default function ProfilePage() {
         setEmail(data.email);
         setHourlyRate(data.hourlyRate.toString());
       } catch (error) {
-        toast.error("Error al cargar el perfil");
+        toast.error(error instanceof Error ? error.message : "Error al cargar el perfil");
       } finally {
         setIsLoading(false);
       }
