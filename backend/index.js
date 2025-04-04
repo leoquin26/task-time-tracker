@@ -13,9 +13,11 @@ const userRoutes = require('./routes/user');
 
 const app = express();
 
-// Configurar CORS (incluye preflight OPTIONS)
+// Configurar CORS para permitir solicitudes desde el frontend,
+// incluyendo el envío de credenciales (cookies, headers de autorización, etc.)
 app.use(cors({
   origin: ['https://task-time-tracker-g1kn.vercel.app', 'http://localhost:3000'],
+  credentials: true,
   optionsSuccessStatus: 200
 }));
 app.options('*', cors());
