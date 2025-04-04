@@ -13,8 +13,7 @@ const userRoutes = require('./routes/user');
 
 const app = express();
 
-// Configurar CORS para permitir solicitudes desde el frontend,
-// incluyendo el envío de credenciales (cookies, headers de autorización, etc.)
+// Configurar CORS (incluye preflight OPTIONS)
 app.use(cors({
   origin: ['https://task-time-tracker-g1kn.vercel.app', 'http://localhost:3000'],
   credentials: true,
@@ -46,9 +45,6 @@ app.use((err, req, res, next) => {
   res.status(500).json({ message: 'Something went wrong!' });
 });
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
-
+// Para despliegue en Vercel, no se llama a app.listen()
+// Vercel invocará esta función como una función serverless.
 module.exports = app;
