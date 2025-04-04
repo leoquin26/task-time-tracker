@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -16,9 +16,10 @@ interface UserProfile {
   hourlyRate: number;
 }
 
-export default function EditTaskPage({ params }: { params: { id: string } }) {
-  // Accedemos directamente al ID desde params
-  const taskId = params.id;
+export default function EditTaskPage() {
+  // Usar useParams para obtener el ID de la tarea
+  const params = useParams();
+  const taskId = params.id as string;
   
   const [fecha, setFecha] = useState("");
   const [horas, setHoras] = useState(0);
