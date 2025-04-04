@@ -42,7 +42,7 @@ export default function EditTaskPage() {
       const token = localStorage.getItem("token");
       
       try {
-        const response = await fetch("http://localhost:5000/api/user/profile", {
+        const response = await fetch("https://task-time-tracker-xi.vercel.app/api/user/profile", {
           headers: { Authorization: `Bearer ${token}` },
         });
         
@@ -68,7 +68,7 @@ export default function EditTaskPage() {
       const token = localStorage.getItem("token");
 
       try {
-        const response = await fetch(`http://localhost:5000/api/tasks/${taskId}`, {
+        const response = await fetch(`https://task-time-tracker-xi.vercel.app/api/tasks/${taskId}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 
@@ -130,7 +130,7 @@ export default function EditTaskPage() {
     const totalHoras = horas + (minutos / 60) + (segundos / 3600);
 
     try {
-      const response = await fetch(`http://localhost:5000/api/tasks/${taskId}`, {
+      const response = await fetch(`https://task-time-tracker-xi.vercel.app/api/tasks/${taskId}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",

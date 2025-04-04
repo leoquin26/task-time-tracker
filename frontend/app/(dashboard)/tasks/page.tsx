@@ -51,26 +51,26 @@ export default function TasksPage() {
   const fetchTasks = async (filter = "all") => {
     setIsLoading(true);
     const token = localStorage.getItem("token");
-    let url = "http://localhost:5000/api/tasks";
+    let url = "https://task-time-tracker-xi.vercel.app/api/tasks";
     
     // Determinar la URL basada en el filtro
     if (filter === "daily") {
-      url = "http://localhost:5000/api/tasks/filter/daily";
+      url = "https://task-time-tracker-xi.vercel.app/api/tasks/filter/daily";
     } else if (filter === "weekly") {
-      url = "http://localhost:5000/api/tasks/filter/weekly";
+      url = "https://task-time-tracker-xi.vercel.app/api/tasks/filter/weekly";
     } else if (filter === "monthly") {
-      url = "http://localhost:5000/api/tasks/filter/monthly";
+      url = "https://task-time-tracker-xi.vercel.app/api/tasks/filter/monthly";
     } else if (filter === "custom" && customStartDate && customEndDate) {
       const formattedStartDate = format(customStartDate, "yyyy-MM-dd");
       const formattedEndDate = format(customEndDate, "yyyy-MM-dd");
-      url = `http://localhost:5000/api/tasks?startDate=${formattedStartDate}&endDate=${formattedEndDate}`;
+      url = `https://task-time-tracker-xi.vercel.app/api/tasks?startDate=${formattedStartDate}&endDate=${formattedEndDate}`;
     } else if (filter === "specific-day" && specificDate) {
       // Para filtrar por un día específico, usamos el mismo día como inicio y fin
       const formattedDate = format(specificDate, "yyyy-MM-dd");
       // Añadimos un día al final para incluir todo el día seleccionado
       const nextDay = addDays(new Date(formattedDate), 1);
       const formattedNextDay = format(nextDay, "yyyy-MM-dd");
-      url = `http://localhost:5000/api/tasks?startDate=${formattedDate}&endDate=${formattedNextDay}`;
+      url = `https://task-time-tracker-xi.vercel.app/api/tasks?startDate=${formattedDate}&endDate=${formattedNextDay}`;
     }
 
     try {
@@ -130,7 +130,7 @@ export default function TasksPage() {
     const token = localStorage.getItem("token");
 
     try {
-      const response = await fetch(`http://localhost:5000/api/tasks/${id}`, {
+      const response = await fetch(`https://task-time-tracker-xi.vercel.app/api/tasks/${id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });

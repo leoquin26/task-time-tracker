@@ -25,13 +25,13 @@ export default function DashboardPage() {
 
     try {
       const [dailyRes, weeklyRes, monthlyRes] = await Promise.all([
-        fetch("http://localhost:5000/api/metrics/daily", {
+        fetch("https://task-time-tracker-xi.vercel.app/api/metrics/daily", {
           headers: { Authorization: `Bearer ${token}` },
         }),
-        fetch("http://localhost:5000/api/metrics/weekly", {
+        fetch("https://task-time-tracker-xi.vercel.app/api/metrics/weekly", {
           headers: { Authorization: `Bearer ${token}` },
         }),
-        fetch("http://localhost:5000/api/metrics/monthly", {
+        fetch("https://task-time-tracker-xi.vercel.app/api/metrics/monthly", {
           headers: { Authorization: `Bearer ${token}` },
         }),
       ]);

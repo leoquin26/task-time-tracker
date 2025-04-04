@@ -29,7 +29,7 @@ export default function ProfilePage() {
       const token = localStorage.getItem("token");
 
       try {
-        const response = await fetch("http://localhost:5000/api/user/profile", {
+        const response = await fetch("https://task-time-tracker-xi.vercel.app/api/user/profile", {
           headers: { Authorization: `Bearer ${token}` },
         });
 
@@ -59,7 +59,7 @@ export default function ProfilePage() {
     const token = localStorage.getItem("token");
 
     try {
-      const response = await fetch("http://localhost:5000/api/user/profile", {
+      const response = await fetch("https://task-time-tracker-xi.vercel.app/api/user/profile", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -92,7 +92,7 @@ export default function ProfilePage() {
     setIsUpdatingDates(true);
     const token = localStorage.getItem("token");
     try {
-      const response = await fetch("http://localhost:5000/api/tasks/adjust-dates", {
+      const response = await fetch("https://task-time-tracker-xi.vercel.app/api/tasks/adjust-dates", {
         method: "PUT",
         headers: {
           Authorization: `Bearer ${token}`,
