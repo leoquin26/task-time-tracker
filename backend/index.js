@@ -1,35 +1,49 @@
-// Backend/index.js
 const express = require('express');
+const mongoose = require('mongoose');
 const bodyParser = require('body-parser');
 const dotenv = require('dotenv');
 const cors = require('cors');
 
-// Cargar variables de entorno
 dotenv.config();
+
+const authRoutes = require('./routes/auth');
+const taskRoutes = require('./routes/tasks');
+const metricsRoutes = require('./routes/metrics');
+const userRoutes = require('./routes/user');
 
 const app = express();
 
-// Configurar CORS para permitir solicitudes desde tu frontend
+
 app.use(cors({
-  origin: 'https://task-time-tracker-g1kn.vercel.app', // Permite este origen
-  credentials: true, // Si necesitas enviar cookies o credenciales
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  origin: ['https://task-time-tracker-g1kn.vercel.app', 'http://localhost:3000']
 }));
+
 
 // Middleware para parsear JSON
 app.use(bodyParser.json());
 
-// Monta tus rutas
-app.use('/api/tasks', require('./routes/tasks'));
-app.use('/api/users', require('./routes/auth')); // Asegúrate de que la ruta concuerde
-app.use('/api/user', require('./routes/user'));
+// Conexión a MongoDB
+mongoose
+  .connect(process.env.MONGO_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  })
+  .then(() => console.log('MongoDB connected'))
+  .catch(err => console.error(err));
 
-// Manejo de errores
+// Rutas
+app.use('/api/users', authRoutes);
+app.use('/api/tasks', taskRoutes);
+app.use('/api/metrics', metricsRoutes);
+app.use('/api/user', userRoutes);
+
+// Middleware de manejo de errores
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  res.status(500).json({ message: 'Server error' });
+  res.status(500).json({ message: 'Something went wrong!' });
 });
 
-// Para despliegue en Vercel, exportamos la app como módulo
-module.exports = app;
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
