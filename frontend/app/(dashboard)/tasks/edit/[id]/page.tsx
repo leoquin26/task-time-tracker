@@ -11,16 +11,14 @@ import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft } from 'lucide-react';
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { InfoIcon } from 'lucide-react';
-import { use } from 'react';
 
 interface UserProfile {
   hourlyRate: number;
 }
 
 export default function EditTaskPage({ params }: { params: { id: string } }) {
-  // Desenvuelve params con React.use()
-  const unwrappedParams = use(params);
-  const taskId = unwrappedParams.id;
+  // Accedemos directamente al ID desde params
+  const taskId = params.id;
   
   const [fecha, setFecha] = useState("");
   const [horas, setHoras] = useState(0);
@@ -53,8 +51,8 @@ export default function EditTaskPage({ params }: { params: { id: string } }) {
         
         const data = await response.json();
         setUserProfile(data);
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Error al cargar el perfil del usuario");
+      } catch (_) {
+        toast.error("Error al cargar el perfil del usuario");
       } finally {
         setIsLoadingProfile(false);
       }
@@ -96,8 +94,8 @@ export default function EditTaskPage({ params }: { params: { id: string } }) {
         
         setMonto(data.monto);
         setDescripcion(data.descripcion);
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Error al cargar la tarea");
+      } catch (_) {
+        toast.error("Error al cargar la tarea");
         router.push("/tasks");
       } finally {
         setIsLoading(false);
@@ -152,8 +150,8 @@ export default function EditTaskPage({ params }: { params: { id: string } }) {
       toast.success("Tarea actualizada correctamente");
       
       router.push("/tasks");
-    } catch (err) {
-      toast.error( err instanceof Error ? err.message : "Error al actualizar la tarea");
+    } catch (_) {
+      toast.error("Error al actualizar la tarea");
     } finally {
       setIsSaving(false);
     }
