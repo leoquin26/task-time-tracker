@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Clock, DollarSign, ListTodo } from "lucide-react";
+import { Clock, DollarSign, ListTodo } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 
 interface Metrics {
@@ -13,42 +13,25 @@ interface Metrics {
 }
 
 export default function DashboardPage() {
-  // Se inicializan las métricas con valores por defecto
-  const [dailyMetrics, setDailyMetrics] = useState<Metrics>({
-    totalHoras: 0,
-    totalTareas: 0,
-    totalMonto: 0,
-  });
-  const [weeklyMetrics, setWeeklyMetrics] = useState<Metrics>({
-    totalHoras: 0,
-    totalTareas: 0,
-    totalMonto: 0,
-  });
-  const [monthlyMetrics, setMonthlyMetrics] = useState<Metrics>({
-    totalHoras: 0,
-    totalTareas: 0,
-    totalMonto: 0,
-  });
-  const [isLoading, setIsLoading] = useState(false);
+  const [dailyMetrics, setDailyMetrics] = useState<Metrics | null>(null);
+  const [weeklyMetrics, setWeeklyMetrics] = useState<Metrics | null>(null);
+  const [monthlyMetrics, setMonthlyMetrics] = useState<Metrics | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
-
-  // Utiliza una variable de entorno para la URL base de la API (o usa localhost por defecto)
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
   const fetchMetrics = async () => {
     setIsLoading(true);
     const token = localStorage.getItem("token");
 
     try {
-      // Se utilizan las URL basadas en API_BASE
       const [dailyRes, weeklyRes, monthlyRes] = await Promise.all([
-        fetch(`${API_BASE}/api/metrics/daily`, {
+        fetch("http://localhost:5000/api/metrics/daily", {
           headers: { Authorization: `Bearer ${token}` },
         }),
-        fetch(`${API_BASE}/api/metrics/weekly`, {
+        fetch("http://localhost:5000/api/metrics/weekly", {
           headers: { Authorization: `Bearer ${token}` },
         }),
-        fetch(`${API_BASE}/api/metrics/monthly`, {
+        fetch("http://localhost:5000/api/metrics/monthly", {
           headers: { Authorization: `Bearer ${token}` },
         }),
       ]);
@@ -57,14 +40,14 @@ export default function DashboardPage() {
         throw new Error("Failed to fetch metrics");
       }
 
-      const daily: Metrics = await dailyRes.json();
-      const weekly: Metrics = await weeklyRes.json();
-      const monthly: Metrics = await monthlyRes.json();
+      const daily = await dailyRes.json();
+      const weekly = await weeklyRes.json();
+      const monthly = await monthlyRes.json();
 
       setDailyMetrics(daily);
       setWeeklyMetrics(weekly);
       setMonthlyMetrics(monthly);
-    } catch (error) {
+    } catch (err) {
       toast.error("Error al cargar las métricas");
     } finally {
       setIsLoading(false);
@@ -73,6 +56,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchMetrics();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -102,7 +86,7 @@ export default function DashboardPage() {
                   {isLoading ? (
                     <div className="h-8 w-16 animate-pulse rounded bg-muted"></div>
                   ) : (
-                    `${dailyMetrics.totalHoras}h`
+                    `${dailyMetrics?.totalHoras || 0}h`
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground">Today</p>
@@ -118,7 +102,7 @@ export default function DashboardPage() {
                   {isLoading ? (
                     <div className="h-8 w-16 animate-pulse rounded bg-muted"></div>
                   ) : (
-                    dailyMetrics.totalTareas
+                    dailyMetrics?.totalTareas || 0
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground">Today</p>
@@ -134,7 +118,7 @@ export default function DashboardPage() {
                   {isLoading ? (
                     <div className="h-8 w-16 animate-pulse rounded bg-muted"></div>
                   ) : (
-                    `$${dailyMetrics.totalMonto}`
+                    `$${dailyMetrics?.totalMonto || 0}`
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground">Today</p>
@@ -154,7 +138,7 @@ export default function DashboardPage() {
                   {isLoading ? (
                     <div className="h-8 w-16 animate-pulse rounded bg-muted"></div>
                   ) : (
-                    `${weeklyMetrics.totalHoras}h`
+                    `${weeklyMetrics?.totalHoras || 0}h`
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground">This Week</p>
@@ -170,7 +154,7 @@ export default function DashboardPage() {
                   {isLoading ? (
                     <div className="h-8 w-16 animate-pulse rounded bg-muted"></div>
                   ) : (
-                    weeklyMetrics.totalTareas
+                    weeklyMetrics?.totalTareas || 0
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground">This Week</p>
@@ -186,7 +170,7 @@ export default function DashboardPage() {
                   {isLoading ? (
                     <div className="h-8 w-16 animate-pulse rounded bg-muted"></div>
                   ) : (
-                    `$${weeklyMetrics.totalMonto}`
+                    `$${weeklyMetrics?.totalMonto || 0}`
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground">This Week</p>
@@ -206,7 +190,7 @@ export default function DashboardPage() {
                   {isLoading ? (
                     <div className="h-8 w-16 animate-pulse rounded bg-muted"></div>
                   ) : (
-                    `${monthlyMetrics.totalHoras}h`
+                    `${monthlyMetrics?.totalHoras || 0}h`
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground">This Month</p>
@@ -222,7 +206,7 @@ export default function DashboardPage() {
                   {isLoading ? (
                     <div className="h-8 w-16 animate-pulse rounded bg-muted"></div>
                   ) : (
-                    monthlyMetrics.totalTareas
+                    monthlyMetrics?.totalTareas || 0
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground">This Month</p>
@@ -238,7 +222,7 @@ export default function DashboardPage() {
                   {isLoading ? (
                     <div className="h-8 w-16 animate-pulse rounded bg-muted"></div>
                   ) : (
-                    `$${monthlyMetrics.totalMonto}`
+                    `$${monthlyMetrics?.totalMonto || 0}`
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground">This Month</p>

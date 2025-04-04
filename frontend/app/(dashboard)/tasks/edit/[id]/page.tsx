@@ -13,14 +13,6 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { InfoIcon } from 'lucide-react';
 import { use } from 'react';
 
-interface Task {
-  _id: string;
-  fecha: string;
-  horas: number;
-  monto: number;
-  descripcion: string;
-}
-
 interface UserProfile {
   hourlyRate: number;
 }
@@ -30,7 +22,6 @@ export default function EditTaskPage({ params }: { params: { id: string } }) {
   const unwrappedParams = use(params);
   const taskId = unwrappedParams.id;
   
-  const [task, setTask] = useState<Task | null>(null);
   const [fecha, setFecha] = useState("");
   const [horas, setHoras] = useState(0);
   const [minutos, setMinutos] = useState(0);
@@ -62,7 +53,7 @@ export default function EditTaskPage({ params }: { params: { id: string } }) {
         
         const data = await response.json();
         setUserProfile(data);
-      } catch (error) {
+      } catch (err) {
         toast.error("Error al cargar el perfil del usuario");
       } finally {
         setIsLoadingProfile(false);
@@ -87,7 +78,6 @@ export default function EditTaskPage({ params }: { params: { id: string } }) {
         }
 
         const data = await response.json();
-        setTask(data);
         
         // Format date for input field (YYYY-MM-DD)
         const formattedDate = new Date(data.fecha).toISOString().split("T")[0];
@@ -106,7 +96,7 @@ export default function EditTaskPage({ params }: { params: { id: string } }) {
         
         setMonto(data.monto);
         setDescripcion(data.descripcion);
-      } catch (error) {
+      } catch (err) {
         toast.error("Error al cargar la tarea");
         router.push("/tasks");
       } finally {
@@ -162,8 +152,8 @@ export default function EditTaskPage({ params }: { params: { id: string } }) {
       toast.success("Tarea actualizada correctamente");
       
       router.push("/tasks");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Error al actualizar la tarea");
+    } catch (err) {
+      toast.error("Error al actualizar la tarea");
     } finally {
       setIsSaving(false);
     }
