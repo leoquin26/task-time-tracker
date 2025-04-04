@@ -13,11 +13,12 @@ const userRoutes = require('./routes/user');
 
 const app = express();
 
-
+// Configurar CORS (incluye preflight OPTIONS)
 app.use(cors({
-  origin: ['https://task-time-tracker-g1kn.vercel.app', 'http://localhost:3000']
+  origin: ['https://task-time-tracker-g1kn.vercel.app', 'http://localhost:3000'],
+  optionsSuccessStatus: 200
 }));
-
+app.options('*', cors());
 
 // Middleware para parsear JSON
 app.use(bodyParser.json());
@@ -29,7 +30,7 @@ mongoose
     useUnifiedTopology: true,
   })
   .then(() => console.log('MongoDB connected'))
-  .catch(err => console.error(err));
+  .catch(err => console.error('MongoDB connection error:', err));
 
 // Rutas
 app.use('/api/users', authRoutes);
@@ -47,3 +48,5 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
+module.exports = app;
