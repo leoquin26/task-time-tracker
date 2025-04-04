@@ -1,3 +1,4 @@
+// Backend/routes/user.js
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
@@ -21,7 +22,6 @@ router.put('/profile', authMiddleware, async (req, res) => {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ message: 'User not found' });
     
-    // Permitir actualizar el rate por hora y otros campos si se desean
     if (hourlyRate !== undefined) user.hourlyRate = hourlyRate;
     if (username) user.username = username;
     if (email) user.email = email;

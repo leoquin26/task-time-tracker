@@ -1,3 +1,4 @@
+// Backend/routes/metrics.js
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
@@ -12,15 +13,12 @@ function getDateRange(period) {
   let start, end;
   switch (period) {
     case 'daily':
-      // Inicio del día actual en UTC
       start = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
-      // Fin: inicio del día siguiente en UTC
       end = new Date(start);
       end.setUTCDate(end.getUTCDate() + 1);
       break;
     case 'weekly':
-      // Suponiendo que la semana inicia el domingo
-      const dayOfWeek = now.getUTCDay(); // 0 (domingo) a 6 (sábado)
+      const dayOfWeek = now.getUTCDay();
       start = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek));
       end = new Date(start);
       end.setUTCDate(end.getUTCDate() + 7);

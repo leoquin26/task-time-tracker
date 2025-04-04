@@ -1,3 +1,4 @@
+// Backend/routes/tasks.js
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
@@ -9,11 +10,12 @@ const authMiddleware = require('../middleware/authMiddleware');
  * Se puede pasar un offset (en minutos) para calcular el rango según la hora local del usuario.
  * @param {string} period - "daily", "weekly" o "monthly"
  * @param {number} offsetMinutes - Offset en minutos desde UTC. Si no se envía, se usa el offset del servidor.
- * @returns {Object} { start, end } en UTC, correspondientes al inicio y fin del período en la zona local del usuario.
+ * @returns {Object} { start, end } en UTC, correspondientes al inicio y fin del período en la zona local.
  */
 function getDateRange(period, offsetMinutes) {
   const offset = (offsetMinutes !== undefined) ? Number(offsetMinutes) : new Date().getTimezoneOffset();
   const offsetMs = offset * 60000;
+  // La hora "local" del cliente se obtiene restando el offset (ya que local = UTC - offset)
   const clientNow = new Date(Date.now() - offsetMs);
   let clientStartLocal, clientEndLocal;
   switch (period) {
@@ -41,11 +43,11 @@ function getDateRange(period, offsetMinutes) {
 
 /* 
   -----------------------------------------------
-  Endpoints Fijos (se definen antes de las rutas con parámetros)
+  Endpoints Fijos (antes de rutas con parámetros)
   -----------------------------------------------
 */
 
-// PUT /api/tasks/adjust-dates - Actualiza todas las tareas (excepto la última) restando 1 día (24 horas) a su campo "fecha"
+// PUT /api/tasks/adjust-dates - Actualiza todas las tareas (excepto la última) restando 24 horas a su campo "fecha"
 router.put('/adjust-dates', authMiddleware, async (req, res) => {
   try {
     const lastTask = await Task.findOne({ userId: new mongoose.Types.ObjectId(req.user.id) }).sort({ createdAt: -1 });
@@ -76,7 +78,7 @@ router.post('/parse', authMiddleware, async (req, res) => {
       return res.status(400).json({ message: "No text provided" });
     }
     
-    // Ejemplo del formato:
+    // Formato de ejemplo:
     // You earned $25.79 for this task
     // Tasking time: 1 hour at $24.50 / hour
     //
@@ -126,7 +128,13 @@ router.post('/parse', authMiddleware, async (req, res) => {
   }
 });
 
-// Endpoints para filtrar Tasks por período usando la función getDateRange:
+/* 
+  -----------------------------------------------
+  Endpoints para Filtrar Tasks por Período
+  -----------------------------------------------
+*/
+
+// GET /api/tasks/filter/daily
 router.get('/filter/daily', authMiddleware, async (req, res) => {
   try {
     const offset = req.query.offset ? Number(req.query.offset) : new Date().getTimezoneOffset();
@@ -141,6 +149,8 @@ router.get('/filter/daily', authMiddleware, async (req, res) => {
     res.status(500).send("Server error");
   }
 });
+
+// GET /api/tasks/filter/weekly
 router.get('/filter/weekly', authMiddleware, async (req, res) => {
   try {
     const offset = req.query.offset ? Number(req.query.offset) : new Date().getTimezoneOffset();
@@ -155,6 +165,8 @@ router.get('/filter/weekly', authMiddleware, async (req, res) => {
     res.status(500).send("Server error");
   }
 });
+
+// GET /api/tasks/filter/monthly
 router.get('/filter/monthly', authMiddleware, async (req, res) => {
   try {
     const offset = req.query.offset ? Number(req.query.offset) : new Date().getTimezoneOffset();
@@ -170,13 +182,17 @@ router.get('/filter/monthly', authMiddleware, async (req, res) => {
   }
 });
 
-// GET /api/tasks - Endpoint por defecto con filtro de rango personalizado
+/* 
+  -----------------------------------------------
+  Endpoints Clásicos para Tasks (Duplicados eliminables)
+  -----------------------------------------------
+*/
+
+// Si ya tienes definidos GET, POST, PUT, DELETE de forma anterior, puedes eliminar los duplicados.
 router.get('/', authMiddleware, async (req, res) => {
   const { startDate, endDate } = req.query;
   const filter = { userId: new mongoose.Types.ObjectId(req.user.id) };
   if (startDate && endDate) {
-    // Se asume que el cliente envía las fechas en formato "yyyy-MM-dd".
-    // Se forzan a UTC agregando "T00:00:00Z" para el inicio, y se ajusta el end al final del día.
     const start = new Date(startDate + "T00:00:00Z");
     const end = new Date(endDate + "T00:00:00Z");
     end.setUTCHours(23, 59, 59, 999);
@@ -191,7 +207,7 @@ router.get('/', authMiddleware, async (req, res) => {
   }
 });
 
-// GET /api/tasks/:id - Obtener una tarea por ID (asegúrate de que esta ruta se coloque después de las rutas fijas)
+// GET /api/tasks/:id
 router.get('/:id', authMiddleware, async (req, res) => {
   try {
     const task = await Task.findOne({
@@ -208,7 +224,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
   }
 });
 
-// POST /api/tasks - Crear una tarea (modo clásico) - (Duplicado, si ya lo definiste arriba, puedes eliminarlo)
+// POST /api/tasks (modo clásico)
 router.post('/', authMiddleware, async (req, res) => {
   const { fecha, horas, monto, descripcion } = req.body;
   try {
@@ -227,7 +243,7 @@ router.post('/', authMiddleware, async (req, res) => {
   }
 });
 
-// PUT /api/tasks/:id - Actualizar una tarea (modo clásico) - (Duplicado, si ya lo definiste arriba, puedes eliminarlo)
+// PUT /api/tasks/:id (modo clásico)
 router.put('/:id', authMiddleware, async (req, res) => {
   const { fecha, horas, monto, descripcion } = req.body;
   try {
@@ -250,7 +266,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
   }
 });
 
-// DELETE /api/tasks/:id - Eliminar una tarea (modo clásico) - (Duplicado, si ya lo definiste arriba, puedes eliminarlo)
+// DELETE /api/tasks/:id (modo clásico)
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
     const task = await Task.findOneAndDelete({

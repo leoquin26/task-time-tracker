@@ -1,3 +1,4 @@
+// Backend/routes/auth.js
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
@@ -20,7 +21,7 @@ router.post('/register', async (req, res) => {
     res.json({ token });
   } catch (err) {
     console.error(err.message);
-    res.status(500).send('Server error');
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
@@ -41,7 +42,7 @@ router.post('/login', async (req, res) => {
     res.json({ token });
   } catch (err) {
     console.error(err.message);
-    res.status(500).send('Server error');
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
