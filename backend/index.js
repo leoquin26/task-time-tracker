@@ -9,20 +9,13 @@ dotenv.config();
 
 const app = express();
 
-const allowedOrigins = ['https://task-time-tracker-g1kn.vercel.app'];
+// Configurar CORS para permitir solicitudes desde tu frontend
 app.use(cors({
-  origin: function(origin, callback) {
-    // Permitir solicitudes sin origen (por ejemplo, llamadas desde herramientas de prueba)
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      return callback(null, true);
-    } else {
-      return callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true
+  origin: 'https://task-time-tracker-g1kn.vercel.app', // Permite este origen
+  credentials: true, // Si necesitas enviar cookies o credenciales
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
-
 
 // Middleware para parsear JSON
 app.use(bodyParser.json());

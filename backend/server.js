@@ -12,9 +12,11 @@ const metricsRoutes = require('./routes/metrics');
 const userRoutes = require('./routes/user');
 
 const app = express();
-app.use(cors());
 
 
+app.use(cors({
+  origin: ['https://tu-frontend.vercel.app', 'http://localhost:3000']
+}));
 // Middleware para parsear JSON
 app.use(bodyParser.json());
 
