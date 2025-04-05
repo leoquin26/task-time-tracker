@@ -23,13 +23,14 @@ export default function ProfilePage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isUpdatingDates, setIsUpdatingDates] = useState(false);
   const { toast } = useToast();
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
 
   useEffect(() => {
     const fetchProfile = async () => {
       const token = localStorage.getItem("token");
 
       try {
-        const response = await fetch("https://task-time-tracker-xi.vercel.app/api/user/profile", {
+        const response = await fetch(`${apiUrl}/api/user/profile`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 
@@ -59,7 +60,7 @@ export default function ProfilePage() {
     const token = localStorage.getItem("token");
 
     try {
-      const response = await fetch("https://task-time-tracker-xi.vercel.app/api/user/profile", {
+      const response = await fetch(`${apiUrl}/api/user/profile`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -92,7 +93,7 @@ export default function ProfilePage() {
     setIsUpdatingDates(true);
     const token = localStorage.getItem("token");
     try {
-      const response = await fetch("https://task-time-tracker-xi.vercel.app/api/tasks/adjust-dates", {
+      const response = await fetch(`${apiUrl}/api/tasks/adjust-dates`, {
         method: "PUT",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -124,7 +125,7 @@ export default function ProfilePage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Profile</h1>
-        <p className="text-muted-foreground">
+        <p className="text-muted-foreground py-2">
           Manage your account settings
         </p>
       </div>
@@ -133,7 +134,7 @@ export default function ProfilePage() {
         <form onSubmit={handleSubmit}>
           <CardHeader>
             <CardTitle>Profile Settings</CardTitle>
-            <CardDescription>Update your account information</CardDescription>
+            <CardDescription className="py-4">Update your account information</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -171,7 +172,7 @@ export default function ProfilePage() {
               </p>
             </div>
           </CardContent>
-          <CardFooter>
+          <CardFooter className="pt-6">
             <Button type="submit" disabled={isSaving}>
               {isSaving ? "Saving..." : "Save Changes"}
             </Button>
@@ -180,7 +181,7 @@ export default function ProfilePage() {
       </Card>
 
       {/* Nueva sección para actualizar las fechas de las tasks */}
-      <Card>
+      {/* <Card>
         <CardHeader>
           <CardTitle>Update Tasks Dates</CardTitle>
           <CardDescription>
@@ -192,7 +193,7 @@ export default function ProfilePage() {
             {isUpdatingDates ? "Updating..." : "Update Tasks Dates"}
           </Button>
         </CardFooter>
-      </Card>
+      </Card> */}
     </div>
   );
 }

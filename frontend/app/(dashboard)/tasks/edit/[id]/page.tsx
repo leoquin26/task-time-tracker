@@ -36,13 +36,15 @@ export default function EditTaskPage() {
   const router = useRouter();
   const { toast } = useToast();
 
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+
   // Cargar el perfil del usuario para obtener su tarifa por hora
   useEffect(() => {
     const fetchUserProfile = async () => {
       const token = localStorage.getItem("token");
       
       try {
-        const response = await fetch("https://task-time-tracker-xi.vercel.app/api/user/profile", {
+        const response = await fetch(`${apiUrl}/api/user/profile`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         
@@ -68,7 +70,7 @@ export default function EditTaskPage() {
       const token = localStorage.getItem("token");
 
       try {
-        const response = await fetch(`https://task-time-tracker-xi.vercel.app/api/tasks/${taskId}`, {
+        const response = await fetch(`${apiUrl}/api/tasks/${taskId}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 
@@ -130,7 +132,7 @@ export default function EditTaskPage() {
     const totalHoras = horas + (minutos / 60) + (segundos / 3600);
 
     try {
-      const response = await fetch(`https://task-time-tracker-xi.vercel.app/api/tasks/${taskId}`, {
+      const response = await fetch(`${apiUrl}/api/tasks/${taskId}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",

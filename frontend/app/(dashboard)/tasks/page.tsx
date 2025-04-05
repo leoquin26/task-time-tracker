@@ -3,14 +3,14 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Pencil, Trash2, Search, Filter, CalendarDays } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, Filter, CalendarDays } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format, addDays } from "date-fns";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { 
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -25,6 +25,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+// Task interface
 interface Task {
   _id: string;
   fecha: string;
@@ -33,7 +34,20 @@ interface Task {
   descripcion: string;
 }
 
-export default function TasksPage() {
+// Helper function to convert decimal hours to a formatted duration string "Xh Ym Zs"
+function formatDuration(decimalHours: number): string {
+  const totalSeconds = Math.round(decimalHours * 3600);
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  let parts: string[] = [];
+  if (h > 0) parts.push(`${h}h`);
+  if (m > 0) parts.push(`${m}m`);
+  if (s > 0 || parts.length === 0) parts.push(`${s}s`);
+  return parts.join(" ");
+}
+
+export default function DashboardPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -44,55 +58,52 @@ export default function TasksPage() {
   const [totalHours, setTotalHours] = useState(0);
   const [totalAmount, setTotalAmount] = useState(0);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
-  
+
   const router = useRouter();
   const { toast } = useToast();
+
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
 
   const fetchTasks = async (filter = "all") => {
     setIsLoading(true);
     const token = localStorage.getItem("token");
-    let url = "https://task-time-tracker-xi.vercel.app/api/tasks";
-    
-    // Determinar la URL basada en el filtro
+    let url = `${apiUrl}/api/tasks`;
+
+    // Determine URL based on filter
     if (filter === "daily") {
-      url = "https://task-time-tracker-xi.vercel.app/api/tasks/filter/daily";
+      url = `${apiUrl}/api/tasks/filter/daily`;
     } else if (filter === "weekly") {
-      url = "https://task-time-tracker-xi.vercel.app/api/tasks/filter/weekly";
+      url = `${apiUrl}/api/tasks/filter/weekly`;
     } else if (filter === "monthly") {
-      url = "https://task-time-tracker-xi.vercel.app/api/tasks/filter/monthly";
+      url = `${apiUrl}/api/tasks/filter/monthly`;
     } else if (filter === "custom" && customStartDate && customEndDate) {
       const formattedStartDate = format(customStartDate, "yyyy-MM-dd");
       const formattedEndDate = format(customEndDate, "yyyy-MM-dd");
-      url = `https://task-time-tracker-xi.vercel.app/api/tasks?startDate=${formattedStartDate}&endDate=${formattedEndDate}`;
+      url = `${apiUrl}/api/tasks?startDate=${formattedStartDate}&endDate=${formattedEndDate}`;
     } else if (filter === "specific-day" && specificDate) {
-      // Para filtrar por un día específico, usamos el mismo día como inicio y fin
       const formattedDate = format(specificDate, "yyyy-MM-dd");
-      // Añadimos un día al final para incluir todo el día seleccionado
       const nextDay = addDays(new Date(formattedDate), 1);
       const formattedNextDay = format(nextDay, "yyyy-MM-dd");
-      url = `https://task-time-tracker-xi.vercel.app/api/tasks?startDate=${formattedDate}&endDate=${formattedNextDay}`;
+      url = `${apiUrl}/api/tasks?startDate=${formattedDate}&endDate=${formattedNextDay}`;
     }
 
     try {
       const response = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
-
       if (!response.ok) {
         throw new Error("Failed to fetch tasks");
       }
-
       const data = await response.json();
       setTasks(data);
-      
-      // Calcular totales
+
+      // Calculate totals
       const hours = data.reduce((sum: number, task: Task) => sum + task.horas, 0);
       const amount = data.reduce((sum: number, task: Task) => sum + task.monto, 0);
-      
       setTotalHours(parseFloat(hours.toFixed(2)));
       setTotalAmount(parseFloat(amount.toFixed(2)));
     } catch (error) {
-      toast.error("Error al cargar las tareas");
+      toast.error("Error loading tasks");
     } finally {
       setIsLoading(false);
     }
@@ -108,7 +119,7 @@ export default function TasksPage() {
       setActiveFilter("custom");
       fetchTasks("custom");
     } else {
-      toast.error("Por favor selecciona fechas de inicio y fin");
+      toast.error("Please select a start and end date");
     }
   };
 
@@ -118,74 +129,58 @@ export default function TasksPage() {
       fetchTasks("specific-day");
       setIsCalendarOpen(false);
     } else {
-      toast.error("Por favor selecciona una fecha");
+      toast.error("Please select a date");
     }
   };
 
   const deleteTask = async (id: string) => {
-    if (!confirm("¿Estás seguro de que quieres eliminar esta tarea?")) {
-      return;
-    }
-
+    if (!confirm("Are you sure you want to delete this task?")) return;
     const token = localStorage.getItem("token");
-
     try {
-      const response = await fetch(`https://task-time-tracker-xi.vercel.app/api/tasks/${id}`, {
+      const response = await fetch(`${apiUrl}/api/tasks/${id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });
-
-      if (!response.ok) {
-        throw new Error("Failed to delete task");
-      }
-
-      toast.success("Tarea eliminada correctamente");
-      
-      // Refrescar la lista de tareas con el filtro actual
+      if (!response.ok) throw new Error("Failed to delete task");
+      toast.success("Task deleted successfully");
       fetchTasks(activeFilter);
     } catch (error) {
-      toast.error("Error al eliminar la tarea");
+      toast.error("Error deleting task");
     }
   };
 
   useEffect(() => {
     fetchTasks();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const filteredTasks = tasks.filter((task) =>
     task.descripcion.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const formatDateToSpanish = (date: Date) => {
-    const day = date.getDate();
-    const monthNames = [
-      'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
-      'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
-    ];
-    const month = monthNames[date.getMonth()];
-    const year = date.getFullYear();
-    return `${day} de ${month} de ${year}`;
+  // Convert a Date to a readable string in English
+  const formatDateToEnglish = (date: Date) => {
+    return format(date, "MMMM do, yyyy");
   };
 
   const getFilterLabel = () => {
     switch (activeFilter) {
       case "daily":
-        return "Hoy";
+        return "Today";
       case "weekly":
-        return "Esta Semana";
+        return "This Week";
       case "monthly":
-        return "Este Mes";
+        return "This Month";
       case "custom":
-        return customStartDate && customEndDate 
-          ? `${format(customStartDate, "dd/MM/yyyy")} a ${format(customEndDate, "dd/MM/yyyy")}`
-          : "Período personalizado";
+        return customStartDate && customEndDate
+          ? `${format(customStartDate, "MM/dd/yyyy")} to ${format(customEndDate, "MM/dd/yyyy")}`
+          : "Custom Period";
       case "specific-day":
-        return specificDate 
-          ? formatDateToSpanish(specificDate)
-          : "Día específico";
+        return specificDate
+          ? formatDateToEnglish(specificDate)
+          : "Specific Day";
       default:
-        return "Todas las Tareas";
+        return "All Tasks";
     }
   };
 
@@ -193,12 +188,12 @@ export default function TasksPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Tareas</h1>
-          <p className="text-muted-foreground">Administra tus tareas de trabajo</p>
+          <h1 className="text-3xl font-bold tracking-tight">Tasks</h1>
+          <p className="text-muted-foreground">Manage your work tasks</p>
         </div>
         <Button onClick={() => router.push("/tasks/new")}>
           <Plus className="mr-2 h-4 w-4" />
-          Agregar Tarea
+          Add Task
         </Button>
       </div>
 
@@ -212,10 +207,10 @@ export default function TasksPage() {
               className="w-full md:w-auto"
             >
               <TabsList className="grid grid-cols-4 w-full md:w-auto">
-                <TabsTrigger value="all">Todas</TabsTrigger>
-                <TabsTrigger value="daily">Hoy</TabsTrigger>
-                <TabsTrigger value="weekly">Semana</TabsTrigger>
-                <TabsTrigger value="monthly">Mes</TabsTrigger>
+                <TabsTrigger value="all">All</TabsTrigger>
+                <TabsTrigger value="daily">Today</TabsTrigger>
+                <TabsTrigger value="weekly">Week</TabsTrigger>
+                <TabsTrigger value="monthly">Month</TabsTrigger>
               </TabsList>
             </Tabs>
             
@@ -227,29 +222,29 @@ export default function TasksPage() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuLabel>Filtrar por</DropdownMenuLabel>
+                  <DropdownMenuLabel>Filter by</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => handleFilterChange("all")}>
-                    Todas las tareas
+                    All Tasks
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => handleFilterChange("daily")}>
-                    Hoy
+                    Today
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => handleFilterChange("weekly")}>
-                    Esta semana
+                    This Week
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => handleFilterChange("monthly")}>
-                    Este mes
+                    This Month
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => setActiveFilter("custom")}>
-                    Período personalizado
+                    Custom Period
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => {
                     setIsCalendarOpen(true);
                     setActiveFilter("specific-day");
                   }}>
-                    Día específico
+                    Specific Day
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -257,7 +252,7 @@ export default function TasksPage() {
               <div className="relative flex-1">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Buscar tareas..."
+                  placeholder="Search tasks..."
                   className="pl-8"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -269,7 +264,7 @@ export default function TasksPage() {
           {activeFilter === "custom" && (
             <div className="flex flex-col space-y-4 md:flex-row md:items-end md:space-x-4 md:space-y-0 mb-4 p-4 border rounded-md bg-muted/20">
               <div className="space-y-2 flex-1">
-                <label className="text-sm font-medium">Fecha Inicio</label>
+                <label className="text-sm font-medium">Start Date</label>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
@@ -278,9 +273,9 @@ export default function TasksPage() {
                     >
                       <CalendarDays className="mr-2 h-4 w-4" />
                       {customStartDate ? (
-                        format(customStartDate, "dd/MM/yyyy")
+                        format(customStartDate, "MM/dd/yyyy")
                       ) : (
-                        <span>Seleccionar fecha</span>
+                        <span>Select date</span>
                       )}
                     </Button>
                   </PopoverTrigger>
@@ -295,7 +290,7 @@ export default function TasksPage() {
                 </Popover>
               </div>
               <div className="space-y-2 flex-1">
-                <label className="text-sm font-medium">Fecha Fin</label>
+                <label className="text-sm font-medium">End Date</label>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
@@ -304,9 +299,9 @@ export default function TasksPage() {
                     >
                       <CalendarDays className="mr-2 h-4 w-4" />
                       {customEndDate ? (
-                        format(customEndDate, "dd/MM/yyyy")
+                        format(customEndDate, "MM/dd/yyyy")
                       ) : (
-                        <span>Seleccionar fecha</span>
+                        <span>Select date</span>
                       )}
                     </Button>
                   </PopoverTrigger>
@@ -322,7 +317,7 @@ export default function TasksPage() {
               </div>
               <Button onClick={handleCustomDateFilter}>
                 <Filter className="mr-2 h-4 w-4" />
-                Aplicar Filtro
+                Apply Filter
               </Button>
             </div>
           )}
@@ -331,7 +326,7 @@ export default function TasksPage() {
             <div className="flex flex-col space-y-4 mb-4 p-4 border rounded-md bg-muted/20">
               <div className="flex flex-col md:flex-row md:items-end space-y-4 md:space-y-0 md:space-x-4">
                 <div className="space-y-2 flex-1">
-                  <label className="text-sm font-medium">Seleccionar Día</label>
+                  <label className="text-sm font-medium">Select Day</label>
                   <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
                     <PopoverTrigger asChild>
                       <Button
@@ -340,9 +335,9 @@ export default function TasksPage() {
                       >
                         <CalendarDays className="mr-2 h-4 w-4" />
                         {specificDate ? (
-                          formatDateToSpanish(specificDate)
+                          formatDateToEnglish(specificDate) // You may update this function to English as needed
                         ) : (
-                          <span>Seleccionar fecha</span>
+                          <span>Select date</span>
                         )}
                       </Button>
                     </PopoverTrigger>
@@ -358,7 +353,7 @@ export default function TasksPage() {
                 </div>
                 <Button onClick={handleSpecificDayFilter}>
                   <Filter className="mr-2 h-4 w-4" />
-                  Ver Tareas del Día
+                  View Day's Tasks
                 </Button>
               </div>
             </div>
@@ -376,25 +371,25 @@ export default function TasksPage() {
             </div>
           ) : filteredTasks.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
-              <p className="text-muted-foreground">No se encontraron tareas para {getFilterLabel()}</p>
+              <p className="text-muted-foreground">No tasks found for {getFilterLabel()}</p>
               <Button variant="outline" className="mt-4" onClick={() => router.push("/tasks/new")}>
                 <Plus className="mr-2 h-4 w-4" />
-                Agregar tu primera tarea
+                Add your first task
               </Button>
             </div>
           ) : (
             <>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                 <Card className="p-4 bg-muted/50">
-                  <div className="font-medium text-sm text-muted-foreground">Total de Tareas</div>
+                  <div className="font-medium text-sm text-muted-foreground">Total Tasks</div>
                   <div className="text-2xl font-bold">{filteredTasks.length}</div>
                 </Card>
                 <Card className="p-4 bg-muted/50">
-                  <div className="font-medium text-sm text-muted-foreground">Total de Horas</div>
-                  <div className="text-2xl font-bold">{totalHours}h</div>
+                  <div className="font-medium text-sm text-muted-foreground">Total Duration</div>
+                  <div className="text-2xl font-bold">{formatDuration(totalHours)}</div>
                 </Card>
                 <Card className="p-4 bg-muted/50">
-                  <div className="font-medium text-sm text-muted-foreground">Total Ganado</div>
+                  <div className="font-medium text-sm text-muted-foreground">Total Earned</div>
                   <div className="text-2xl font-bold">${totalAmount}</div>
                 </Card>
               </div>
@@ -403,18 +398,18 @@ export default function TasksPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Fecha</TableHead>
-                      <TableHead>Horas</TableHead>
-                      <TableHead>Monto</TableHead>
-                      <TableHead>Descripción</TableHead>
-                      <TableHead className="text-right">Acciones</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Duration</TableHead>
+                      <TableHead>Amount</TableHead>
+                      <TableHead>Description</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredTasks.map((task) => (
                       <TableRow key={task._id}>
-                        <TableCell>{format(new Date(task.fecha), "dd/MM/yyyy")}</TableCell>
-                        <TableCell>{task.horas.toFixed(2)}h</TableCell>
+                        <TableCell>{format(new Date(task.fecha), "MM/dd/yyyy")}</TableCell>
+                        <TableCell>{formatDuration(task.horas)}</TableCell>
                         <TableCell>${task.monto.toFixed(2)}</TableCell>
                         <TableCell className="max-w-xs truncate">{task.descripcion}</TableCell>
                         <TableCell className="text-right">
@@ -425,7 +420,7 @@ export default function TasksPage() {
                               onClick={() => router.push(`/tasks/edit/${task._id}`)}
                             >
                               <Pencil className="h-4 w-4" />
-                              <span className="sr-only">Editar</span>
+                              <span className="sr-only">Edit</span>
                             </Button>
                             <Button
                               variant="ghost"
@@ -433,7 +428,7 @@ export default function TasksPage() {
                               onClick={() => deleteTask(task._id)}
                             >
                               <Trash2 className="h-4 w-4" />
-                              <span className="sr-only">Eliminar</span>
+                              <span className="sr-only">Delete</span>
                             </Button>
                           </div>
                         </TableCell>

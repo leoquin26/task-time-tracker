@@ -37,13 +37,15 @@ export default function NewTaskPage() {
   const router = useRouter();
   const { toast } = useToast();
 
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+
   // Cargar el perfil del usuario para obtener su tarifa por hora
   useEffect(() => {
     const fetchUserProfile = async () => {
       const token = localStorage.getItem("token");
       
       try {
-        const response = await fetch("https://task-time-tracker-xi.vercel.app/api/user/profile", {
+        const response = await fetch(`${apiUrl}/api/user/profile`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         
@@ -88,7 +90,7 @@ export default function NewTaskPage() {
     const totalHoras = horas + (minutos / 60) + (segundos / 3600);
     
     try {
-      const response = await fetch("https://task-time-tracker-xi.vercel.app/api/tasks", {
+      const response = await fetch(`${apiUrl}/api/tasks`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -128,7 +130,7 @@ export default function NewTaskPage() {
     const token = localStorage.getItem("token");
     
     try {
-      const response = await fetch("https://task-time-tracker-xi.vercel.app/api/tasks/parse", {
+      const response = await fetch(`${apiUrl}/api/tasks/parse`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -273,7 +275,7 @@ export default function NewTaskPage() {
                   />
                 </div>
               </CardContent>
-              <CardFooter className="flex justify-between">
+              <CardFooter className="flex justify-between pt-6">
                 <Button variant="outline" type="button" onClick={() => router.back()}>
                   Cancelar
                 </Button>
@@ -281,7 +283,7 @@ export default function NewTaskPage() {
                   type="submit" 
                   disabled={isLoading || !userProfile?.hourlyRate}
                 >
-                  {isLoading ? "Creando..." : "Crear Tarea"}
+                  {isLoading ? "Creating..." : "Create Task"}
                 </Button>
               </CardFooter>
             </form>
@@ -306,12 +308,12 @@ export default function NewTaskPage() {
                   required
                 />
               </CardContent>
-              <CardFooter className="flex justify-between">
+              <CardFooter className="flex justify-between pt-6">
                 <Button variant="outline" type="button" onClick={() => router.back()}>
                   Cancelar
                 </Button>
                 <Button type="submit" disabled={isLoading}>
-                  {isLoading ? "Procesando..." : "Procesar Texto"}
+                  {isLoading ? "Procesing..." : "Processing Text"}
                 </Button>
               </CardFooter>
             </form>
