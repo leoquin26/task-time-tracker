@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { Clock, LayoutDashboard, ListTodo, Settings, LogOut, Menu, X } from "lucide-react"
+import { Clock, LayoutDashboard, ListTodo, Settings, LogOut, Menu, X } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { useRouter } from "next/navigation"
 import { ThemeToggle } from "@/components/theme-toggle"
@@ -80,7 +80,7 @@ export function MainNav() {
           <span className="font-bold">TimeTracker</span>
         </Link>
 
-        {/* Desktop Navigation */}
+        {/* Desktop Navigation - Main Links */}
         <nav className="hidden md:flex items-center space-x-6 text-sm font-medium">
           {navItems.map((item) => (
             <Link
@@ -97,21 +97,22 @@ export function MainNav() {
               </div>
             </Link>
           ))}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleLogout}
-            className="text-foreground/60 hover:text-foreground/80"
-          >
-            <div className="flex items-center gap-1">
-              <LogOut className="h-4 w-4" />
-              <span>Logout</span>
-            </div>
-          </Button>
         </nav>
       </div>
 
-      <div className="flex items-center gap-2">
+      {/* Right side actions - Theme Toggle and Logout */}
+      <div className="flex items-center gap-4">
+        {/* Desktop Logout Button */}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleLogout}
+          className="hidden md:flex text-foreground/60 hover:text-foreground/80 items-center gap-1"
+        >
+          <LogOut className="h-4 w-4" />
+          <span>Logout</span>
+        </Button>
+        
         <ThemeToggle />
 
         {/* Mobile Menu Button */}
@@ -179,4 +180,3 @@ export function MainNav() {
     </div>
   )
 }
-
