@@ -1,3 +1,4 @@
+// Frontend/pages/register.tsx (o similar)
 "use client";
 
 import { useState } from "react";
@@ -12,7 +13,6 @@ import { useToast } from "@/hooks/use-toast";
 
 export default function RegisterPage() {
   const [username, setUsername] = useState("");
-  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
@@ -29,7 +29,7 @@ export default function RegisterPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ username, email, password }),
+        body: JSON.stringify({ username, password }),
       });
 
       const data = await response.json();
@@ -61,7 +61,7 @@ export default function RegisterPage() {
           </div>
           <CardTitle className="text-2xl text-center">Create an account</CardTitle>
           <CardDescription className="text-center">
-            Enter your details to create your account
+            Enter your username and password to create your account
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
@@ -73,17 +73,6 @@ export default function RegisterPage() {
                 placeholder="johndoe"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="m@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
                 required
               />
             </div>

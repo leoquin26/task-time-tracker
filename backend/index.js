@@ -10,10 +10,10 @@ const authRoutes = require('./routes/auth');
 const taskRoutes = require('./routes/tasks');
 const metricsRoutes = require('./routes/metrics');
 const userRoutes = require('./routes/user');
+const migrateRoutes = require('./routes/migrate');
 
 const app = express();
 
-// Configurar CORS (incluye preflight OPTIONS)
 app.use(cors({
   origin: ['https://task-time-tracker-g1kn.vercel.app', 'http://localhost:3000'],
   credentials: true,
@@ -21,10 +21,8 @@ app.use(cors({
 }));
 app.options('*', cors());
 
-// Middleware para parsear JSON
 app.use(bodyParser.json());
 
-// Conexión a MongoDB
 mongoose
   .connect(process.env.MONGO_URI, {
     useNewUrlParser: true,
@@ -33,22 +31,29 @@ mongoose
   .then(() => console.log('MongoDB connected'))
   .catch(err => console.error('MongoDB connection error:', err));
 
-// Rutas
 app.use('/api/users', authRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/metrics', metricsRoutes);
 app.use('/api/user', userRoutes);
 
-app.get('/api/health', (req, res) => {
-    res.status(200).json({ message: "Backend is up and running" });
-  });
+// Mount the migration route as a GET endpoint (open and unprotected)
+app.use('/api/migrate', migrateRoutes);
 
-// Middleware de manejo de errores
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ message: "Backend is up and running" });
+});
+
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({ message: 'Something went wrong!' });
 });
 
-// Para despliegue en Vercel, no se llama a app.listen()
-// Vercel invocará esta función como una función serverless.
+// Run server if this file is run directly (local development)
+const PORT = process.env.PORT || 5000;
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}
+
 module.exports = app;

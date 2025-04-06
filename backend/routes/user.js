@@ -15,7 +15,7 @@ router.get('/profile', authMiddleware, async (req, res) => {
   }
 });
 
-// Actualizar el perfil del usuario (por ejemplo, configurar el hourlyRate)
+// Actualizar el perfil del usuario (username, email y hourlyRate)
 router.put('/profile', authMiddleware, async (req, res) => {
   try {
     const { hourlyRate, username, email } = req.body;

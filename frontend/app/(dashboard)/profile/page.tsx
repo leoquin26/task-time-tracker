@@ -1,3 +1,4 @@
+// Frontend/pages/profile.tsx (o similar)
 "use client";
 
 import { useEffect, useState } from "react";
@@ -10,7 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 interface User {
   _id: string;
   username: string;
-  email: string;
+  email?: string;
   hourlyRate: number;
 }
 
@@ -21,7 +22,6 @@ export default function ProfilePage() {
   const [hourlyRate, setHourlyRate] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [isUpdatingDates, setIsUpdatingDates] = useState(false);
   const { toast } = useToast();
   const apiUrl = process.env.NEXT_PUBLIC_API_URL;
 
@@ -41,7 +41,7 @@ export default function ProfilePage() {
         const data = await response.json();
         setUser(data);
         setUsername(data.username);
-        setEmail(data.email);
+        setEmail(data.email || "");
         setHourlyRate(data.hourlyRate.toString());
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Error al cargar el perfil");
@@ -51,7 +51,7 @@ export default function ProfilePage() {
     };
 
     fetchProfile();
-  }, [toast]);
+  }, [toast, apiUrl]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -85,31 +85,6 @@ export default function ProfilePage() {
       toast.error(error instanceof Error ? error.message : "Error al actualizar el perfil");
     } finally {
       setIsSaving(false);
-    }
-  };
-
-  // Función para llamar al endpoint de ajuste de fechas de tasks.
-  const handleUpdateTasksDates = async () => {
-    setIsUpdatingDates(true);
-    const token = localStorage.getItem("token");
-    try {
-      const response = await fetch(`${apiUrl}/api/tasks/adjust-dates`, {
-        method: "PUT",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to update tasks dates");
-      }
-
-      const data = await response.json();
-      toast.success(`Fechas actualizadas correctamente: ${data.message}`);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Error al actualizar fechas de tareas");
-    } finally {
-      setIsUpdatingDates(false);
     }
   };
 
@@ -147,13 +122,12 @@ export default function ProfilePage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">Email (Optional)</Label>
               <Input
                 id="email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                required
               />
             </div>
             <div className="space-y-2">
@@ -179,21 +153,6 @@ export default function ProfilePage() {
           </CardFooter>
         </form>
       </Card>
-
-      {/* Nueva sección para actualizar las fechas de las tasks */}
-      {/* <Card>
-        <CardHeader>
-          <CardTitle>Update Tasks Dates</CardTitle>
-          <CardDescription>
-            Adjust all your tasks (except the latest one) by subtracting one day to correct the dates.
-          </CardDescription>
-        </CardHeader>
-        <CardFooter>
-          <Button onClick={handleUpdateTasksDates} disabled={isUpdatingDates}>
-            {isUpdatingDates ? "Updating..." : "Update Tasks Dates"}
-          </Button>
-        </CardFooter>
-      </Card> */}
     </div>
   );
 }

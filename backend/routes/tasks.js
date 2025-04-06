@@ -1,53 +1,44 @@
-// Backend/routes/tasks.js
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
 const Task = require('../models/Task');
+const User = require('../models/User'); // Requerido para obtener la tarifa del usuario
 const authMiddleware = require('../middleware/authMiddleware');
 
 /**
- * Función auxiliar para obtener el rango de fechas según el período, ajustado a la zona horaria del cliente.
- * Se puede pasar un offset (en minutos) para calcular el rango según la hora local del usuario.
- * @param {string} period - "daily", "weekly" o "monthly"
- * @param {number} offsetMinutes - Offset en minutos desde UTC. Si no se envía, se usa el offset del servidor.
- * @returns {Object} { start, end } en UTC, correspondientes al inicio y fin del período en la zona local.
+ * Función auxiliar para obtener el rango de fechas según el período usando UTC.
  */
-function getDateRange(period, offsetMinutes) {
-  const offset = (offsetMinutes !== undefined) ? Number(offsetMinutes) : new Date().getTimezoneOffset();
-  const offsetMs = offset * 60000;
-  // La hora "local" del cliente se obtiene restando el offset (ya que local = UTC - offset)
-  const clientNow = new Date(Date.now() - offsetMs);
-  let clientStartLocal, clientEndLocal;
+function getDateRange(period) {
+  const now = new Date();
+  let start, end;
   switch (period) {
     case 'daily':
-      clientStartLocal = new Date(clientNow.getFullYear(), clientNow.getMonth(), clientNow.getDate());
-      clientEndLocal = new Date(clientStartLocal.getTime() + 24 * 3600000);
+      start = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+      end = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate() + 1));
       break;
-    case 'weekly':
-      const dayOfWeek = clientNow.getDay();
-      clientStartLocal = new Date(clientNow.getFullYear(), clientNow.getMonth(), clientNow.getDate() - dayOfWeek);
-      clientEndLocal = new Date(clientStartLocal.getTime() + 7 * 24 * 3600000);
+    case 'weekly': {
+      const day = now.getUTCDay(); // 0 (Sunday) a 6 (Saturday)
+      start = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate() - day));
+      end = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate() - day + 7));
       break;
+    }
     case 'monthly':
-      clientStartLocal = new Date(clientNow.getFullYear(), clientNow.getMonth(), 1);
-      clientEndLocal = new Date(clientNow.getFullYear(), clientNow.getMonth() + 1, 1);
+      start = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
+      end = new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1, 1));
       break;
     default:
-      clientStartLocal = clientNow;
-      clientEndLocal = clientNow;
+      start = now;
+      end = now;
   }
-  const startUTC = new Date(clientStartLocal.getTime() + offsetMs);
-  const endUTC = new Date(clientEndLocal.getTime() + offsetMs);
-  return { start: startUTC, end: endUTC };
+  console.log(`Filter [${period}]: start=${start.toISOString()}, end=${end.toISOString()}`);
+  return { start, end };
 }
 
-/* 
-  -----------------------------------------------
-  Endpoints Fijos (antes de rutas con parámetros)
-  -----------------------------------------------
-*/
+/* -----------------------------------------------
+   Endpoints Fijos (antes de rutas con parámetros)
+   ----------------------------------------------- */
 
-// PUT /api/tasks/adjust-dates - Actualiza todas las tareas (excepto la última) restando 24 horas a su campo "fecha"
+// PUT /api/tasks/adjust-dates - Resta 24 horas a la fecha de todas las tareas (excepto la última)
 router.put('/adjust-dates', authMiddleware, async (req, res) => {
   try {
     const lastTask = await Task.findOne({ userId: new mongoose.Types.ObjectId(req.user.id) }).sort({ createdAt: -1 });
@@ -59,9 +50,7 @@ router.put('/adjust-dates', authMiddleware, async (req, res) => {
         userId: new mongoose.Types.ObjectId(req.user.id),
         _id: { $ne: lastTask._id }
       },
-      [
-        { $set: { fecha: { $subtract: [ "$fecha", 86400000 ] } } }
-      ]
+      [{ $set: { fecha: { $subtract: [ "$fecha", 86400000 ] } } }]
     );
     res.json({ message: `Updated ${result.modifiedCount} tasks` });
   } catch (err) {
@@ -70,7 +59,9 @@ router.put('/adjust-dates', authMiddleware, async (req, res) => {
   }
 });
 
-// POST /api/tasks/parse - Crear una tarea a partir de texto pegado
+/* -----------------------------------------------
+   Endpoint para parsear texto y crear tarea
+   ----------------------------------------------- */
 router.post('/parse', authMiddleware, async (req, res) => {
   try {
     const { text } = req.body;
@@ -78,12 +69,7 @@ router.post('/parse', authMiddleware, async (req, res) => {
       return res.status(400).json({ message: "No text provided" });
     }
     
-    // Formato de ejemplo:
-    // You earned $25.79 for this task
-    // Tasking time: 1 hour at $24.50 / hour
-    //
-    // Exceeded time: 10 minutes 34 seconds at $7.35 / hour
-    
+    // Extraer el tiempo normal (Tasking time)
     const taskingRegex = /Tasking time:\s*(?:(\d+)\s*hour[s]?\s*)?(?:(\d+)\s*minute[s]?\s*)?(?:(\d+)\s*second[s]?\s*)?at\s*\$(\d+(?:\.\d+)?)\s*\/\s*hour/i;
     const taskingMatch = text.match(taskingRegex);
     if (!taskingMatch) {
@@ -92,31 +78,41 @@ router.post('/parse', authMiddleware, async (req, res) => {
     const taskingHours = taskingMatch[1] ? Number(taskingMatch[1]) : 0;
     const taskingMinutes = taskingMatch[2] ? Number(taskingMatch[2]) : 0;
     const taskingSeconds = taskingMatch[3] ? Number(taskingMatch[3]) : 0;
-    const taskingRate = taskingMatch[4] ? Number(taskingMatch[4]) : 0;
     const totalTaskingHours = taskingHours + (taskingMinutes / 60) + (taskingSeconds / 3600);
     
+    // Extraer el tiempo excedido (si existe)
     let totalExceedHours = 0;
     let exceedRate = 0;
-    const exceedRegex = /Exceeded time:\s*(?:(\d+)\s*hour[s]?\s*)?(?:(\d+)\s*minute[s]?\s*)?(?:(\d+)\s*second[s]?\s*)?at\s*\$(\d+(?:\.\d+)?)\s*\/\s*hour/i;
-    const exceedMatch = text.match(exceedRegex);
-    if (exceedMatch) {
-      const exceedHours = exceedMatch[1] ? Number(exceedMatch[1]) : 0;
-      const exceedMinutes = exceedMatch[2] ? Number(exceedMatch[2]) : 0;
-      const exceedSeconds = exceedMatch[3] ? Number(exceedMatch[3]) : 0;
-      exceedRate = exceedMatch[4] ? Number(exceedMatch[4]) : 0;
-      totalExceedHours = exceedHours + (exceedMinutes / 60) + (exceedSeconds / 3600);
+    if (text.includes("Exceeded time:")) {
+      const exceedRegex = /Exceeded time:\s*(?:(\d+)\s*hour[s]?\s*)?(?:(\d+)\s*minute[s]?\s*)?(?:(\d+)\s*second[s]?\s*)?at\s*\$(\d+(?:\.\d+)?)\s*\/\s*hour/i;
+      const exceedMatch = text.match(exceedRegex);
+      if (exceedMatch) {
+        const exHours = exceedMatch[1] ? Number(exceedMatch[1]) : 0;
+        const exMinutes = exceedMatch[2] ? Number(exceedMatch[2]) : 0;
+        const exSeconds = exceedMatch[3] ? Number(exceedMatch[3]) : 0;
+        exceedRate = exceedMatch[4] ? Number(exceedMatch[4]) : 0;
+        totalExceedHours = exHours + (exMinutes / 60) + (exSeconds / 3600);
+      }
     }
     
-    const totalHours = totalTaskingHours + totalExceedHours;
-    const roundedHours = Number(totalHours.toFixed(3));
-    const computedAmount = (totalTaskingHours * taskingRate) + (totalExceedHours * exceedRate);
-    const roundedAmount = Number(computedAmount.toFixed(2));
+    // Obtener la tarifa del usuario
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    const fullRate = user.hourlyRate;
+    
+    // Calcular el monto:
+    // monto = (totalTaskingHours * fullRate) + (totalExceedHours * fullRate * 0.3)
+    const monto = Number(((totalTaskingHours * fullRate) + (totalExceedHours * fullRate * 0.3)).toFixed(2));
     
     const newTask = new Task({
       userId: new mongoose.Types.ObjectId(req.user.id),
       fecha: new Date(),
-      horas: roundedHours,
-      monto: roundedAmount,
+      taskingHours: totalTaskingHours,
+      exceedHours: totalExceedHours,
+      horas: totalTaskingHours + totalExceedHours,
+      monto,
       descripcion: text,
     });
     
@@ -128,17 +124,14 @@ router.post('/parse', authMiddleware, async (req, res) => {
   }
 });
 
-/* 
-  -----------------------------------------------
-  Endpoints para Filtrar Tasks por Período
-  -----------------------------------------------
-*/
+/* -----------------------------------------------
+   Endpoints para Filtrar Tasks por Período
+   ----------------------------------------------- */
 
 // GET /api/tasks/filter/daily
 router.get('/filter/daily', authMiddleware, async (req, res) => {
   try {
-    const offset = req.query.offset ? Number(req.query.offset) : new Date().getTimezoneOffset();
-    const { start, end } = getDateRange('daily', offset);
+    const { start, end } = getDateRange('daily');
     const tasks = await Task.find({
       userId: new mongoose.Types.ObjectId(req.user.id),
       fecha: { $gte: start, $lt: end }
@@ -153,8 +146,7 @@ router.get('/filter/daily', authMiddleware, async (req, res) => {
 // GET /api/tasks/filter/weekly
 router.get('/filter/weekly', authMiddleware, async (req, res) => {
   try {
-    const offset = req.query.offset ? Number(req.query.offset) : new Date().getTimezoneOffset();
-    const { start, end } = getDateRange('weekly', offset);
+    const { start, end } = getDateRange('weekly');
     const tasks = await Task.find({
       userId: new mongoose.Types.ObjectId(req.user.id),
       fecha: { $gte: start, $lt: end }
@@ -169,8 +161,7 @@ router.get('/filter/weekly', authMiddleware, async (req, res) => {
 // GET /api/tasks/filter/monthly
 router.get('/filter/monthly', authMiddleware, async (req, res) => {
   try {
-    const offset = req.query.offset ? Number(req.query.offset) : new Date().getTimezoneOffset();
-    const { start, end } = getDateRange('monthly', offset);
+    const { start, end } = getDateRange('monthly');
     const tasks = await Task.find({
       userId: new mongoose.Types.ObjectId(req.user.id),
       fecha: { $gte: start, $lt: end }
@@ -182,13 +173,11 @@ router.get('/filter/monthly', authMiddleware, async (req, res) => {
   }
 });
 
-/* 
-  -----------------------------------------------
-  Endpoints Clásicos para Tasks (Duplicados eliminables)
-  -----------------------------------------------
-*/
+/* -----------------------------------------------
+   Endpoints Clásicos para Tasks (duplicados removibles)
+   ----------------------------------------------- */
 
-// Si ya tienes definidos GET, POST, PUT, DELETE de forma anterior, puedes eliminar los duplicados.
+// GET /api/tasks
 router.get('/', authMiddleware, async (req, res) => {
   const { startDate, endDate } = req.query;
   const filter = { userId: new mongoose.Types.ObjectId(req.user.id) };
@@ -224,14 +213,38 @@ router.get('/:id', authMiddleware, async (req, res) => {
   }
 });
 
-// POST /api/tasks (modo clásico)
+// POST /api/tasks (Modo Clásico - Create)
 router.post('/', authMiddleware, async (req, res) => {
-  const { fecha, horas, monto, descripcion } = req.body;
+  const { fecha, taskingHours, exceedHours, descripcion } = req.body;
   try {
+    // Convertir la fecha (se espera en formato "yyyy-MM-dd") a objeto Date local
+    let localDate;
+    if (fecha) {
+      const parts = fecha.split("-");
+      if (parts.length === 3) {
+        localDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+      } else {
+        localDate = new Date(fecha);
+      }
+    } else {
+      localDate = new Date();
+    }
+    
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    const fullRate = user.hourlyRate;
+    
+    // Calcular el monto: monto = (taskingHours * fullRate) + (exceedHours * fullRate * 0.3)
+    const monto = Number(((taskingHours * fullRate) + (exceedHours * fullRate * 0.3)).toFixed(2));
+    
     const task = new Task({
       userId: new mongoose.Types.ObjectId(req.user.id),
-      fecha,
-      horas,
+      fecha: localDate,
+      taskingHours,
+      exceedHours,
+      horas: Number(taskingHours) + Number(exceedHours),
       monto,
       descripcion,
     });
@@ -243,9 +256,9 @@ router.post('/', authMiddleware, async (req, res) => {
   }
 });
 
-// PUT /api/tasks/:id (modo clásico)
+// PUT /api/tasks/:id (Modo Clásico - Edit)
 router.put('/:id', authMiddleware, async (req, res) => {
-  const { fecha, horas, monto, descripcion } = req.body;
+  const { fecha, taskingHours, exceedHours, descripcion } = req.body;
   try {
     let task = await Task.findOne({
       _id: req.params.id,
@@ -254,10 +267,27 @@ router.put('/:id', authMiddleware, async (req, res) => {
     if (!task) {
       return res.status(404).json({ message: 'Task not found' });
     }
-    task.fecha = fecha || task.fecha;
-    task.horas = horas || task.horas;
-    task.monto = monto || task.monto;
-    task.descripcion = descripcion || task.descripcion;
+    if (fecha) {
+      const parts = fecha.split("-");
+      if (parts.length === 3) {
+        task.fecha = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+      } else {
+        task.fecha = new Date(fecha);
+      }
+    }
+    task.taskingHours = taskingHours !== undefined ? taskingHours : task.taskingHours;
+    task.exceedHours = exceedHours !== undefined ? exceedHours : task.exceedHours;
+    task.horas = Number(task.taskingHours) + Number(task.exceedHours);
+    task.descripcion = descripcion !== undefined ? descripcion : task.descripcion;
+    
+    // Recalcular el monto usando la tarifa del usuario
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    const fullRate = user.hourlyRate;
+    task.monto = Number(((task.taskingHours * fullRate) + (task.exceedHours * fullRate * 0.3)).toFixed(2));
+    
     await task.save();
     res.json(task);
   } catch (err) {
@@ -266,7 +296,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
   }
 });
 
-// DELETE /api/tasks/:id (modo clásico)
+// DELETE /api/tasks/:id (Modo Clásico)
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
     const task = await Task.findOneAndDelete({

@@ -8,51 +8,52 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, CalendarIcon, InfoIcon } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { InfoIcon } from 'lucide-react';
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 interface UserProfile {
   hourlyRate: number;
 }
 
 export default function NewTaskPage() {
-  // Estado para el formulario clásico
-  const [fecha, setFecha] = useState("");
+  // Estados para el tiempo normal (tasking time)
   const [horas, setHoras] = useState(0);
   const [minutos, setMinutos] = useState(0);
   const [segundos, setSegundos] = useState(0);
+  // Estados para el tiempo excedido
+  const [exceedHoras, setExceedHoras] = useState(0);
+  const [exceedMinutos, setExceedMinutos] = useState(0);
+  const [exceedSegundos, setExceedSegundos] = useState(0);
+  
+  const [fecha, setFecha] = useState<Date | undefined>(undefined);
   const [monto, setMonto] = useState(0);
   const [descripcion, setDescripcion] = useState("");
-  
-  // Estado para el texto a parsear
   const [rawText, setRawText] = useState("");
-  
-  // Estado para el usuario y carga
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
-  
+
   const router = useRouter();
   const { toast } = useToast();
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL;
 
-  // Cargar el perfil del usuario para obtener su tarifa por hora
+  // Cargar perfil de usuario para obtener tarifa
   useEffect(() => {
     const fetchUserProfile = async () => {
       const token = localStorage.getItem("token");
-      
       try {
         const response = await fetch(`${apiUrl}/api/user/profile`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        
         if (!response.ok) {
           throw new Error("Failed to fetch user profile");
         }
-        
         const data = await response.json();
         setUserProfile(data);
       } catch (err) {
@@ -61,20 +62,21 @@ export default function NewTaskPage() {
         setIsLoadingProfile(false);
       }
     };
-    
     fetchUserProfile();
-  }, [toast]);
+  }, [toast, apiUrl]);
 
-  // Calcular el monto basado en el tiempo y la tarifa por hora
+  // Recalcular monto automáticamente al modificar los tiempos
   useEffect(() => {
     if (userProfile?.hourlyRate) {
-      const totalHoras = horas + (minutos / 60) + (segundos / 3600);
-      const calculatedAmount = totalHoras * userProfile.hourlyRate;
-      setMonto(parseFloat(calculatedAmount.toFixed(2)));
+      const fullRate = userProfile.hourlyRate;
+      const normalTime = horas + (minutos / 60) + (segundos / 3600);
+      const exceedTime = exceedHoras + (exceedMinutos / 60) + (exceedSegundos / 3600);
+      const calculatedAmount = (normalTime * fullRate) + (exceedTime * fullRate * 0.3);
+      setMonto(Number(calculatedAmount.toFixed(2)));
     }
-  }, [horas, minutos, segundos, userProfile]);
+  }, [horas, minutos, segundos, exceedHoras, exceedMinutos, exceedSegundos, userProfile]);
 
-  // Manejar el envío del formulario clásico
+  // Manejar envío del formulario clásico
   const handleSubmitClassic = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -83,11 +85,20 @@ export default function NewTaskPage() {
       return;
     }
     
+    if (!fecha) {
+      toast.error("Debes seleccionar una fecha");
+      return;
+    }
+    
     setIsLoading(true);
     const token = localStorage.getItem("token");
     
-    // Convertir horas, minutos y segundos a un valor decimal de horas
-    const totalHoras = horas + (minutos / 60) + (segundos / 3600);
+    // Calcular tiempos en horas decimales
+    const normalTime = horas + (minutos / 60) + (segundos / 3600);
+    const exceedTime = exceedHoras + (exceedMinutos / 60) + (exceedSegundos / 3600);
+    
+    // Formatear la fecha como YYYY-MM-DD manteniendo el día seleccionado
+    const formattedDate = format(fecha, "yyyy-MM-dd");
     
     try {
       const response = await fetch(`${apiUrl}/api/tasks`, {
@@ -96,18 +107,19 @@ export default function NewTaskPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
+        // Enviamos el desglose del tiempo normal y excedido
         body: JSON.stringify({
-          fecha,
-          horas: totalHoras,
-          monto,
+          fecha: formattedDate,
+          taskingHours: normalTime,
+          exceedHours: exceedTime,
           descripcion,
         }),
       });
-
+      
       if (!response.ok) {
         throw new Error("Failed to create task");
       }
-
+      
       toast.success("Tarea creada correctamente");
       router.push("/tasks");
     } catch (err) {
@@ -117,7 +129,7 @@ export default function NewTaskPage() {
     }
   };
 
-  // Manejar el envío del texto para parsear
+  // Manejar envío del texto para parsear (sin cambios)
   const handleSubmitRawText = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -136,21 +148,28 @@ export default function NewTaskPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          text: rawText,
-        }),
+        body: JSON.stringify({ text: rawText }),
       });
-
+      
       if (!response.ok) {
         throw new Error("Failed to parse and create tasks");
       }
-
+      
       toast.success("Tareas creadas correctamente");
       router.push("/tasks");
     } catch (err) {
       toast.error("Error al procesar el texto");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Función para manejar selección de fecha
+  const handleDateSelect = (date: Date | undefined) => {
+    setFecha(date);
+    if (date) {
+      console.log("Fecha seleccionada:", date);
+      console.log("Fecha formateada:", format(date, "yyyy-MM-dd"));
     }
   };
 
@@ -162,7 +181,7 @@ export default function NewTaskPage() {
         </Button>
         <h1 className="text-3xl font-bold tracking-tight">Nueva Tarea</h1>
       </div>
-
+      
       <Tabs defaultValue="classic">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="classic">Formulario Clásico</TabsTrigger>
@@ -182,9 +201,9 @@ export default function NewTaskPage() {
                     <InfoIcon className="h-4 w-4" />
                     <AlertDescription>
                       Debes configurar tu tarifa por hora en tu{" "}
-                      <Button 
-                        variant="link" 
-                        className="h-auto p-0 text-destructive underline" 
+                      <Button
+                        variant="link"
+                        className="h-auto p-0 text-destructive underline"
                         onClick={() => router.push("/profile")}
                       >
                         perfil
@@ -196,17 +215,33 @@ export default function NewTaskPage() {
                 
                 <div className="space-y-2">
                   <Label htmlFor="fecha">Fecha</Label>
-                  <Input
-                    id="fecha"
-                    type="date"
-                    value={fecha}
-                    onChange={(e) => setFecha(e.target.value)}
-                    required
-                  />
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start text-left font-normal"
+                        id="fecha"
+                      >
+                        {fecha ? format(fecha, "dd/MM/yyyy") : <span className="text-muted-foreground">Seleccionar fecha</span>}
+                        <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={fecha}
+                        onSelect={handleDateSelect}
+                        locale={es}
+                        initialFocus
+                        fixedWeeks
+                      />
+                    </PopoverContent>
+                  </Popover>
                 </div>
                 
+                {/* Campos para Tiempo Normal */}
                 <div className="space-y-2">
-                  <Label>Tiempo</Label>
+                  <Label>Tiempo Normal (horas, minutos, segundos)</Label>
                   <div className="grid grid-cols-3 gap-2">
                     <div>
                       <Label htmlFor="horas" className="text-xs">Horas</Label>
@@ -246,6 +281,48 @@ export default function NewTaskPage() {
                   </div>
                 </div>
                 
+                {/* Campos para Tiempo Excedido */}
+                <div className="space-y-2">
+                  <Label>Tiempo Excedido (horas, minutos, segundos)</Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <Label htmlFor="exceedHoras" className="text-xs">Horas</Label>
+                      <Input
+                        id="exceedHoras"
+                        type="number"
+                        min="0"
+                        value={exceedHoras}
+                        onChange={(e) => setExceedHoras(parseInt(e.target.value) || 0)}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="exceedMinutos" className="text-xs">Minutos</Label>
+                      <Input
+                        id="exceedMinutos"
+                        type="number"
+                        min="0"
+                        max="59"
+                        value={exceedMinutos}
+                        onChange={(e) => setExceedMinutos(parseInt(e.target.value) || 0)}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="exceedSegundos" className="text-xs">Segundos</Label>
+                      <Input
+                        id="exceedSegundos"
+                        type="number"
+                        min="0"
+                        max="59"
+                        value={exceedSegundos}
+                        onChange={(e) => setExceedSegundos(parseInt(e.target.value) || 0)}
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+                
                 <div className="space-y-2">
                   <Label htmlFor="monto">Monto ($)</Label>
                   <Input
@@ -259,7 +336,7 @@ export default function NewTaskPage() {
                   />
                   <p className="text-sm text-muted-foreground">
                     {userProfile?.hourlyRate 
-                      ? `Calculado automáticamente usando tu tarifa de $${userProfile.hourlyRate}/hora`
+                      ? `Calculado automáticamente usando tu tarifa de $${userProfile.hourlyRate}/hora y tiempo excedido al 30% de esa tarifa`
                       : "Configura tu tarifa por hora en tu perfil para calcular el monto"}
                   </p>
                 </div>
@@ -283,7 +360,7 @@ export default function NewTaskPage() {
                   type="submit" 
                   disabled={isLoading || !userProfile?.hourlyRate}
                 >
-                  {isLoading ? "Creating..." : "Create Task"}
+                  {isLoading ? "Creando..." : "Crear Tarea"}
                 </Button>
               </CardFooter>
             </form>
@@ -313,7 +390,7 @@ export default function NewTaskPage() {
                   Cancelar
                 </Button>
                 <Button type="submit" disabled={isLoading}>
-                  {isLoading ? "Procesing..." : "Processing Text"}
+                  {isLoading ? "Procesando..." : "Procesar Texto"}
                 </Button>
               </CardFooter>
             </form>

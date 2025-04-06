@@ -9,12 +9,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Plus, Pencil, Trash2, Search, Filter, CalendarDays } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format, addDays } from "date-fns";
+import { es } from "date-fns/locale";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { 
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import {
   DropdownMenu,
@@ -28,13 +25,41 @@ import {
 // Task interface
 interface Task {
   _id: string;
-  fecha: string;
-  horas: number;
-  monto: number;
-  descripcion: string;
+  fecha?: string;
+  horas?: number;
+  monto?: number;
+  descripcion?: string;
 }
 
-// Helper function to convert decimal hours to a formatted duration string "Xh Ym Zs"
+/**
+ * Helper function to safely format a date string in Spanish.
+ * It adjusts for the local timezone so that a UTC date like
+ * "2025-04-06T00:00:00.000Z" is shown as "06 de abril de 2025"
+ * regardless of the browser's timezone.
+ */
+function safeFormatDate(dateStr?: string): string {
+  if (!dateStr) return "Sin fecha";
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return "Fecha inválida";
+  // Adjust by adding the timezone offset so that the date is shown as stored
+  date.setMinutes(date.getMinutes() + date.getTimezoneOffset());
+  return format(date, "dd/MM/yyyy", { locale: es });
+}
+
+/**
+ * Helper function to format a date for filter labels in Spanish.
+ * We apply the same timezone adjustment.
+ */
+function formatDateToSpanish(date: Date): string {
+  // Create a new date and adjust by adding the timezone offset.
+  const adjustedDate = new Date(date);
+  adjustedDate.setMinutes(adjustedDate.getMinutes() + adjustedDate.getTimezoneOffset());
+  return format(adjustedDate, "dd/MM/yyyy", { locale: es });
+}
+
+/**
+ * Helper function to convert decimal hours to a formatted duration string "Xh Ym Zs"
+ */
 function formatDuration(decimalHours: number): string {
   const totalSeconds = Math.round(decimalHours * 3600);
   const h = Math.floor(totalSeconds / 3600);
@@ -61,7 +86,6 @@ export default function DashboardPage() {
 
   const router = useRouter();
   const { toast } = useToast();
-
   const apiUrl = process.env.NEXT_PUBLIC_API_URL;
 
   const fetchTasks = async (filter = "all") => {
@@ -97,9 +121,9 @@ export default function DashboardPage() {
       const data = await response.json();
       setTasks(data);
 
-      // Calculate totals
-      const hours = data.reduce((sum: number, task: Task) => sum + task.horas, 0);
-      const amount = data.reduce((sum: number, task: Task) => sum + task.monto, 0);
+      // Calculate totals safely using fallback values
+      const hours = data.reduce((sum: number, task: Task) => sum + (task.horas || 0), 0);
+      const amount = data.reduce((sum: number, task: Task) => sum + (task.monto || 0), 0);
       setTotalHours(parseFloat(hours.toFixed(2)));
       setTotalAmount(parseFloat(amount.toFixed(2)));
     } catch (error) {
@@ -154,15 +178,12 @@ export default function DashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Filter tasks safely using a fallback for description
   const filteredTasks = tasks.filter((task) =>
-    task.descripcion.toLowerCase().includes(searchTerm.toLowerCase())
+    (task.descripcion || "").toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Convert a Date to a readable string in English
-  const formatDateToEnglish = (date: Date) => {
-    return format(date, "MMMM do, yyyy");
-  };
-
+  // Use our safeFormatDate to display dates in Spanish
   const getFilterLabel = () => {
     switch (activeFilter) {
       case "daily":
@@ -173,11 +194,11 @@ export default function DashboardPage() {
         return "This Month";
       case "custom":
         return customStartDate && customEndDate
-          ? `${format(customStartDate, "MM/dd/yyyy")} to ${format(customEndDate, "MM/dd/yyyy")}`
+          ? `${format(customStartDate, "dd 'de' MMMM 'de' yyyy", { locale: es })} to ${format(customEndDate, "dd 'de' MMMM 'de' yyyy", { locale: es })}`
           : "Custom Period";
       case "specific-day":
         return specificDate
-          ? formatDateToEnglish(specificDate)
+          ? formatDateToSpanish(specificDate)
           : "Specific Day";
       default:
         return "All Tasks";
@@ -200,12 +221,7 @@ export default function DashboardPage() {
       <Card>
         <CardContent className="p-6">
           <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0 mb-4">
-            <Tabs 
-              defaultValue="all" 
-              value={activeFilter}
-              onValueChange={handleFilterChange}
-              className="w-full md:w-auto"
-            >
+            <Tabs defaultValue="all" value={activeFilter} onValueChange={handleFilterChange} className="w-full md:w-auto">
               <TabsList className="grid grid-cols-4 w-full md:w-auto">
                 <TabsTrigger value="all">All</TabsTrigger>
                 <TabsTrigger value="daily">Today</TabsTrigger>
@@ -213,7 +229,7 @@ export default function DashboardPage() {
                 <TabsTrigger value="monthly">Month</TabsTrigger>
               </TabsList>
             </Tabs>
-            
+
             <div className="flex items-center gap-2">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -224,31 +240,23 @@ export default function DashboardPage() {
                 <DropdownMenuContent align="end">
                   <DropdownMenuLabel>Filter by</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => handleFilterChange("all")}>
-                    All Tasks
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleFilterChange("daily")}>
-                    Today
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleFilterChange("weekly")}>
-                    This Week
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleFilterChange("monthly")}>
-                    This Month
-                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleFilterChange("all")}>All Tasks</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleFilterChange("daily")}>Today</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleFilterChange("weekly")}>This Week</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleFilterChange("monthly")}>This Month</DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => setActiveFilter("custom")}>
-                    Custom Period
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => {
-                    setIsCalendarOpen(true);
-                    setActiveFilter("specific-day");
-                  }}>
+                  <DropdownMenuItem onClick={() => setActiveFilter("custom")}>Custom Period</DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setIsCalendarOpen(true);
+                      setActiveFilter("specific-day");
+                    }}
+                  >
                     Specific Day
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              
+
               <div className="relative flex-1">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -260,32 +268,20 @@ export default function DashboardPage() {
               </div>
             </div>
           </div>
-          
+
           {activeFilter === "custom" && (
             <div className="flex flex-col space-y-4 md:flex-row md:items-end md:space-x-4 md:space-y-0 mb-4 p-4 border rounded-md bg-muted/20">
               <div className="space-y-2 flex-1">
                 <label className="text-sm font-medium">Start Date</label>
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className="w-full justify-start text-left font-normal"
-                    >
+                    <Button variant="outline" className="w-full justify-start text-left font-normal">
                       <CalendarDays className="mr-2 h-4 w-4" />
-                      {customStartDate ? (
-                        format(customStartDate, "MM/dd/yyyy")
-                      ) : (
-                        <span>Select date</span>
-                      )}
+                      {customStartDate ? format(customStartDate, "dd 'de' MMMM 'de' yyyy", { locale: es }) : <span>Select date</span>}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
-                    <CalendarComponent
-                      mode="single"
-                      selected={customStartDate}
-                      onSelect={setCustomStartDate}
-                      initialFocus
-                    />
+                    <CalendarComponent mode="single" selected={customStartDate} onSelect={setCustomStartDate} initialFocus />
                   </PopoverContent>
                 </Popover>
               </div>
@@ -293,25 +289,13 @@ export default function DashboardPage() {
                 <label className="text-sm font-medium">End Date</label>
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className="w-full justify-start text-left font-normal"
-                    >
+                    <Button variant="outline" className="w-full justify-start text-left font-normal">
                       <CalendarDays className="mr-2 h-4 w-4" />
-                      {customEndDate ? (
-                        format(customEndDate, "MM/dd/yyyy")
-                      ) : (
-                        <span>Select date</span>
-                      )}
+                      {customEndDate ? format(customEndDate, "dd 'de' MMMM 'de' yyyy", { locale: es }) : <span>Select date</span>}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
-                    <CalendarComponent
-                      mode="single"
-                      selected={customEndDate}
-                      onSelect={setCustomEndDate}
-                      initialFocus
-                    />
+                    <CalendarComponent mode="single" selected={customEndDate} onSelect={setCustomEndDate} initialFocus />
                   </PopoverContent>
                 </Popover>
               </div>
@@ -321,7 +305,7 @@ export default function DashboardPage() {
               </Button>
             </div>
           )}
-          
+
           {activeFilter === "specific-day" && (
             <div className="flex flex-col space-y-4 mb-4 p-4 border rounded-md bg-muted/20">
               <div className="flex flex-col md:flex-row md:items-end space-y-4 md:space-y-0 md:space-x-4">
@@ -329,25 +313,13 @@ export default function DashboardPage() {
                   <label className="text-sm font-medium">Select Day</label>
                   <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
                     <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className="w-full justify-start text-left font-normal"
-                      >
+                      <Button variant="outline" className="w-full justify-start text-left font-normal">
                         <CalendarDays className="mr-2 h-4 w-4" />
-                        {specificDate ? (
-                          formatDateToEnglish(specificDate) // You may update this function to English as needed
-                        ) : (
-                          <span>Select date</span>
-                        )}
+                        {specificDate ? formatDateToSpanish(specificDate) : <span>Select date</span>}
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="start">
-                      <CalendarComponent
-                        mode="single"
-                        selected={specificDate}
-                        onSelect={setSpecificDate}
-                        initialFocus
-                      />
+                      <CalendarComponent mode="single" selected={specificDate} onSelect={setSpecificDate} initialFocus />
                     </PopoverContent>
                   </Popover>
                 </div>
@@ -360,9 +332,7 @@ export default function DashboardPage() {
           )}
 
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold">
-              {getFilterLabel()}
-            </h2>
+            <h2 className="text-xl font-semibold">{getFilterLabel()}</h2>
           </div>
 
           {isLoading ? (
@@ -390,10 +360,10 @@ export default function DashboardPage() {
                 </Card>
                 <Card className="p-4 bg-muted/50">
                   <div className="font-medium text-sm text-muted-foreground">Total Earned</div>
-                  <div className="text-2xl font-bold">${totalAmount}</div>
+                  <div className="text-2xl font-bold">${(totalAmount ?? 0).toFixed(2)}</div>
                 </Card>
               </div>
-              
+
               <div className="rounded-md border">
                 <Table>
                   <TableHeader>
@@ -408,25 +378,17 @@ export default function DashboardPage() {
                   <TableBody>
                     {filteredTasks.map((task) => (
                       <TableRow key={task._id}>
-                        <TableCell>{format(new Date(task.fecha), "MM/dd/yyyy")}</TableCell>
-                        <TableCell>{formatDuration(task.horas)}</TableCell>
-                        <TableCell>${task.monto.toFixed(2)}</TableCell>
-                        <TableCell className="max-w-xs truncate">{task.descripcion}</TableCell>
+                        <TableCell>{safeFormatDate(task.fecha)}</TableCell>
+                        <TableCell>{formatDuration(task.horas || 0)}</TableCell>
+                        <TableCell>${(task.monto ?? 0).toFixed(2)}</TableCell>
+                        <TableCell className="max-w-xs truncate">{task.descripcion || ""}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => router.push(`/tasks/edit/${task._id}`)}
-                            >
+                            <Button variant="ghost" size="icon" onClick={() => router.push(`/tasks/edit/${task._id}`)}>
                               <Pencil className="h-4 w-4" />
                               <span className="sr-only">Edit</span>
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => deleteTask(task._id)}
-                            >
+                            <Button variant="ghost" size="icon" onClick={() => deleteTask(task._id)}>
                               <Trash2 className="h-4 w-4" />
                               <span className="sr-only">Delete</span>
                             </Button>

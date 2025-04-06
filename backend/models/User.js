@@ -1,3 +1,4 @@
+// Backend/models/User.js
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
@@ -7,27 +8,27 @@ const UserSchema = new mongoose.Schema({
     required: true,
     unique: true,
   },
+  // Email es opcional para el registro; se puede actualizar luego en el perfil
   email: {
     type: String,
-    required: true,
+    required: false,
     unique: true,
+    sparse: true, // Para permitir múltiples documentos sin email
+    default: ""
   },
   password: {
     type: String,
     required: true,
   },
-  // Campo para configurar la tarifa por hora
   hourlyRate: {
     type: Number,
-    default: 0, // Puedes asignar un valor por defecto o ajustarlo posteriormente
+    default: 0,
   },
 }, { timestamps: true });
 
-// Encriptar la contraseña antes de guardar
+// Hash password before saving
 UserSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) {
-    return next();
-  }
+  if (!this.isModified('password')) return next();
   try {
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);
@@ -37,7 +38,7 @@ UserSchema.pre('save', async function(next) {
   }
 });
 
-// Método para comparar contraseña
+// Method to compare password
 UserSchema.methods.comparePassword = async function(candidatePassword) {
   return bcrypt.compare(candidatePassword, this.password);
 };
