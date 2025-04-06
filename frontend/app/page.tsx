@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/theme-toggle"
 import Link from "next/link";
 import { Clock, BarChart3, User } from 'lucide-react';
 
@@ -12,6 +13,7 @@ export default function Home() {
             <span>TimeTracker</span>
           </div>
           <div className="flex items-center gap-4">
+            <ThemeToggle />
             <Link href="/login">
               <Button variant="ghost">Login</Button>
             </Link>
