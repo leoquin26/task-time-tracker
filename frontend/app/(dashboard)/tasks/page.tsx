@@ -34,24 +34,22 @@ interface Task {
 /**
  * Helper function to safely format a date string in Spanish.
  * It adjusts for the local timezone so that a UTC date like
- * "2025-04-06T00:00:00.000Z" is shown as "06 de abril de 2025"
- * regardless of the browser's timezone.
+ * "2025-04-06T00:00:00.000Z" is shown as "06/04/2025" regardless of the browser's timezone.
  */
 function safeFormatDate(dateStr?: string): string {
   if (!dateStr) return "Sin fecha";
   const date = new Date(dateStr);
   if (isNaN(date.getTime())) return "Fecha inválida";
-  // Adjust by adding the timezone offset so that the date is shown as stored
+  // Ajusta agregando el offset de la zona horaria para mostrar la fecha como se almacenó
   date.setMinutes(date.getMinutes() + date.getTimezoneOffset());
   return format(date, "dd/MM/yyyy", { locale: es });
 }
 
 /**
  * Helper function to format a date for filter labels in Spanish.
- * We apply the same timezone adjustment.
+ * Se aplica el mismo ajuste de zona horaria.
  */
 function formatDateToSpanish(date: Date): string {
-  // Create a new date and adjust by adding the timezone offset.
   const adjustedDate = new Date(date);
   adjustedDate.setMinutes(adjustedDate.getMinutes() + adjustedDate.getTimezoneOffset());
   return format(adjustedDate, "dd/MM/yyyy", { locale: es });
@@ -121,10 +119,10 @@ export default function DashboardPage() {
       const data = await response.json();
       setTasks(data);
 
-      // Calculate totals safely using fallback values
+      // Sumar las horas sin redondear para mantener la precisión completa
       const hours = data.reduce((sum: number, task: Task) => sum + (task.horas || 0), 0);
       const amount = data.reduce((sum: number, task: Task) => sum + (task.monto || 0), 0);
-      setTotalHours(parseFloat(hours.toFixed(2)));
+      setTotalHours(hours);
       setTotalAmount(parseFloat(amount.toFixed(2)));
     } catch (error) {
       toast.error("Error loading tasks");

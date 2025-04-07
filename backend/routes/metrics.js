@@ -31,6 +31,7 @@ function getDateRange(period) {
       start = new Date();
       end = new Date();
   }
+  console.log(`Filter [${period}]: start=${start.toISOString()}, end=${end.toISOString()}`);
   return { start, end };
 }
 
@@ -56,7 +57,8 @@ router.get('/daily', authMiddleware, async (req, res) => {
       {
         $project: {
           _id: 0,
-          totalHoras: { $round: ["$totalHoras", 3] },
+          // Usamos una precisión mayor para evitar errores en la conversión a minutos y segundos
+          totalHoras: { $round: ["$totalHoras", 6] },
           totalTareas: 1,
           totalMonto: { $round: ["$totalMonto", 2] }
         }
@@ -91,7 +93,7 @@ router.get('/weekly', authMiddleware, async (req, res) => {
       {
         $project: {
           _id: 0,
-          totalHoras: { $round: ["$totalHoras", 3] },
+          totalHoras: { $round: ["$totalHoras", 6] },
           totalTareas: 1,
           totalMonto: { $round: ["$totalMonto", 2] }
         }
@@ -126,7 +128,7 @@ router.get('/monthly', authMiddleware, async (req, res) => {
       {
         $project: {
           _id: 0,
-          totalHoras: { $round: ["$totalHoras", 3] },
+          totalHoras: { $round: ["$totalHoras", 6] },
           totalTareas: 1,
           totalMonto: { $round: ["$totalMonto", 2] }
         }
