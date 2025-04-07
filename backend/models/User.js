@@ -1,4 +1,3 @@
-// Backend/models/User.js
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
@@ -13,8 +12,9 @@ const UserSchema = new mongoose.Schema({
     type: String,
     required: false,
     unique: true,
-    sparse: true, // Para permitir múltiples documentos sin email
-    default: ""
+    sparse: true,
+    // Eliminamos el valor por defecto para evitar duplicados ("" se consideraría igual en todos los documentos)
+    default: null
   },
   password: {
     type: String,
