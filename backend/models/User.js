@@ -7,8 +7,7 @@ const UserSchema = new mongoose.Schema({
     required: true,
     unique: true,
   },
-  // Email es opcional para el registro; se puede actualizar luego en el perfil.
-  // Se elimina el valor por defecto para que el campo no se incluya si no se provee.
+  // El campo email es opcional, por lo que no se define un valor por defecto.
   email: {
     type: String,
     required: false,
@@ -23,13 +22,13 @@ const UserSchema = new mongoose.Schema({
   },
 }, { timestamps: true });
 
-// Crear un índice único solo para documentos donde email exista y no sea null
+// Se crea un índice único para "email" que solo se aplicará cuando el campo exista y sea distinto de null.
 UserSchema.index(
   { email: 1 },
   { unique: true, partialFilterExpression: { email: { $exists: true, $ne: null } } }
 );
 
-// Hash password before saving
+// Hash de la contraseña antes de guardar
 UserSchema.pre('save', async function(next) {
   if (!this.isModified('password')) return next();
   try {
@@ -41,7 +40,7 @@ UserSchema.pre('save', async function(next) {
   }
 });
 
-// Method to compare password
+// Método para comparar contraseñas
 UserSchema.methods.comparePassword = async function(candidatePassword) {
   return bcrypt.compare(candidatePassword, this.password);
 };
