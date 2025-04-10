@@ -1,47 +1,22 @@
+// routes/tasks.js
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
+const moment = require('moment-timezone');
 const Task = require('../models/Task');
-const User = require('../models/User'); // Requerido para obtener la tarifa del usuario
+const User = require('../models/User');
 const authMiddleware = require('../middleware/authMiddleware');
+const { getDateRangeUser } = require('../utils/dateRange');
 
-/**
- * Función auxiliar para obtener el rango de fechas según el período usando UTC.
- */
-function getDateRange(period) {
-  const now = new Date();
-  let start, end;
-  switch (period) {
-    case 'daily':
-      start = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
-      end = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate() + 1));
-      break;
-    case 'weekly': {
-      const day = now.getUTCDay(); // 0 (Sunday) a 6 (Saturday)
-      start = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate() - day));
-      end = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate() - day + 7));
-      break;
-    }
-    case 'monthly':
-      start = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
-      end = new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1, 1));
-      break;
-    default:
-      start = now;
-      end = now;
-  }
-  console.log(`Filter [${period}]: start=${start.toISOString()}, end=${end.toISOString()}`);
-  return { start, end };
-}
-
-/* -----------------------------------------------
-   Endpoints Fijos (antes de rutas con parámetros)
-   ----------------------------------------------- */
+/* --------------------------------------------------
+   Endpoints Fijos
+-------------------------------------------------- */
 
 // PUT /api/tasks/adjust-dates - Resta 24 horas a la fecha de todas las tareas (excepto la última)
 router.put('/adjust-dates', authMiddleware, async (req, res) => {
   try {
-    const lastTask = await Task.findOne({ userId: new mongoose.Types.ObjectId(req.user.id) }).sort({ createdAt: -1 });
+    const lastTask = await Task.findOne({ userId: new mongoose.Types.ObjectId(req.user.id) })
+      .sort({ createdAt: -1 });
     if (!lastTask) {
       return res.status(404).json({ message: 'No tasks found' });
     }
@@ -59,12 +34,10 @@ router.put('/adjust-dates', authMiddleware, async (req, res) => {
   }
 });
 
-/* -----------------------------------------------
-   Endpoint para parsear texto y crear tarea
-   ----------------------------------------------- */
+// POST /api/tasks/parse - Parsea el texto y crea la tarea
 router.post('/parse', authMiddleware, async (req, res) => {
   try {
-    const { text } = req.body;
+    const { text, fecha } = req.body;
     if (!text) {
       return res.status(400).json({ message: "No text provided" });
     }
@@ -80,9 +53,8 @@ router.post('/parse', authMiddleware, async (req, res) => {
     const taskingSeconds = taskingMatch[3] ? Number(taskingMatch[3]) : 0;
     const totalTaskingHours = taskingHours + (taskingMinutes / 60) + (taskingSeconds / 3600);
     
-    // Extraer el tiempo excedido (si existe)
+    // Extraer tiempo excedido (si existe)
     let totalExceedHours = 0;
-    let exceedRate = 0;
     if (text.includes("Exceeded time:")) {
       const exceedRegex = /Exceeded time:\s*(?:(\d+)\s*hour[s]?\s*)?(?:(\d+)\s*minute[s]?\s*)?(?:(\d+)\s*second[s]?\s*)?at\s*\$(\d+(?:\.\d+)?)\s*\/\s*hour/i;
       const exceedMatch = text.match(exceedRegex);
@@ -90,25 +62,30 @@ router.post('/parse', authMiddleware, async (req, res) => {
         const exHours = exceedMatch[1] ? Number(exceedMatch[1]) : 0;
         const exMinutes = exceedMatch[2] ? Number(exceedMatch[2]) : 0;
         const exSeconds = exceedMatch[3] ? Number(exceedMatch[3]) : 0;
-        exceedRate = exceedMatch[4] ? Number(exceedMatch[4]) : 0;
         totalExceedHours = exHours + (exMinutes / 60) + (exSeconds / 3600);
       }
     }
     
-    // Obtener la tarifa del usuario
+    // Obtener datos del usuario (tarifa y zona horaria)
     const user = await User.findById(req.user.id);
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
+    if (!user) return res.status(404).json({ message: "User not found" });
     const fullRate = user.hourlyRate;
+    const timezone = user.timezone || 'UTC';
+
+    // Si se envía fecha en el body, se interpreta en la zona del usuario; si no se envía, se toma el momento actual.
+    let localDate;
+    if (fecha) {
+      localDate = moment.tz(fecha + " 00:00", timezone).toDate();
+    } else {
+      localDate = moment.tz(timezone).toDate();
+    }
     
-    // Calcular el monto:
-    // monto = (totalTaskingHours * fullRate) + (totalExceedHours * fullRate * 0.3)
+    // Calcular el monto
     const monto = Number(((totalTaskingHours * fullRate) + (totalExceedHours * fullRate * 0.3)).toFixed(2));
     
     const newTask = new Task({
       userId: new mongoose.Types.ObjectId(req.user.id),
-      fecha: new Date(),
+      fecha: localDate,
       taskingHours: totalTaskingHours,
       exceedHours: totalExceedHours,
       horas: totalTaskingHours + totalExceedHours,
@@ -124,17 +101,19 @@ router.post('/parse', authMiddleware, async (req, res) => {
   }
 });
 
-/* -----------------------------------------------
-   Endpoints para Filtrar Tasks por Período
-   ----------------------------------------------- */
+/* --------------------------------------------------
+   Endpoints para Filtrar Tasks (usando zona horaria del usuario)
+-------------------------------------------------- */
 
 // GET /api/tasks/filter/daily
 router.get('/filter/daily', authMiddleware, async (req, res) => {
   try {
-    const { start, end } = getDateRange('daily');
+    const user = await User.findById(req.user.id);
+    const timezone = user.timezone || 'UTC';
+    const { start, end } = getDateRangeUser('daily', timezone);
     const tasks = await Task.find({
       userId: new mongoose.Types.ObjectId(req.user.id),
-      fecha: { $gte: start, $lt: end }
+      fecha: { $gte: start, $lte: end }
     }).sort({ fecha: -1 });
     res.json(tasks);
   } catch (err) {
@@ -146,10 +125,12 @@ router.get('/filter/daily', authMiddleware, async (req, res) => {
 // GET /api/tasks/filter/weekly
 router.get('/filter/weekly', authMiddleware, async (req, res) => {
   try {
-    const { start, end } = getDateRange('weekly');
+    const user = await User.findById(req.user.id);
+    const timezone = user.timezone || 'UTC';
+    const { start, end } = getDateRangeUser('weekly', timezone);
     const tasks = await Task.find({
       userId: new mongoose.Types.ObjectId(req.user.id),
-      fecha: { $gte: start, $lt: end }
+      fecha: { $gte: start, $lte: end }
     }).sort({ fecha: -1 });
     res.json(tasks);
   } catch (err) {
@@ -161,10 +142,12 @@ router.get('/filter/weekly', authMiddleware, async (req, res) => {
 // GET /api/tasks/filter/monthly
 router.get('/filter/monthly', authMiddleware, async (req, res) => {
   try {
-    const { start, end } = getDateRange('monthly');
+    const user = await User.findById(req.user.id);
+    const timezone = user.timezone || 'UTC';
+    const { start, end } = getDateRangeUser('monthly', timezone);
     const tasks = await Task.find({
       userId: new mongoose.Types.ObjectId(req.user.id),
-      fecha: { $gte: start, $lt: end }
+      fecha: { $gte: start, $lte: end }
     }).sort({ fecha: -1 });
     res.json(tasks);
   } catch (err) {
@@ -173,30 +156,84 @@ router.get('/filter/monthly', authMiddleware, async (req, res) => {
   }
 });
 
-/* -----------------------------------------------
-   Endpoints Clásicos para Tasks (duplicados removibles)
-   ----------------------------------------------- */
-
-// GET /api/tasks
-router.get('/', authMiddleware, async (req, res) => {
-  const { startDate, endDate } = req.query;
-  const filter = { userId: new mongoose.Types.ObjectId(req.user.id) };
-  if (startDate && endDate) {
-    const start = new Date(startDate + "T00:00:00Z");
-    const end = new Date(endDate + "T00:00:00Z");
-    end.setUTCHours(23, 59, 59, 999);
-    filter.fecha = { $gte: start, $lte: end };
-  }
+/* --------------------------------------------------
+   Endpoint: Resumen de tareas (/summary)
+   Si se envían parámetros de fecha, se filtra según la zona horaria del usuario.
+   Si no se envían, se resumen TODAS las tareas del usuario.
+-------------------------------------------------- */
+router.get('/summary', authMiddleware, async (req, res) => {
   try {
-    const tasks = await Task.find(filter).sort({ fecha: -1 });
-    res.json(tasks);
+    let match = { userId: new mongoose.Types.ObjectId(req.user.id) };
+
+    if (req.query.startDate && req.query.endDate) {
+      const user = await User.findById(req.user.id);
+      const timezone = user.timezone || 'UTC';
+      const startUtc = moment.tz(req.query.startDate + " 00:00", timezone).utc().toDate();
+      const endUtc = moment.tz(req.query.endDate + " 23:59:59.999", timezone).utc().toDate();
+      match.fecha = { $gte: startUtc, $lte: endUtc };
+    }
+
+    const summary = await Task.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: null,
+          totalTasks: { $sum: 1 },
+          totalHours: { $sum: "$horas" },
+          totalEarned: { $sum: "$monto" }
+        }
+      }
+    ]);
+    if (summary.length > 0) {
+      res.json(summary[0]);
+    } else {
+      res.json({ totalTasks: 0, totalHours: 0, totalEarned: 0 });
+    }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+/* --------------------------------------------------
+   Endpoints Clásicos para Tasks (CRUD)
+-------------------------------------------------- */
+
+// GET /api/tasks (Listado paginado)
+router.get('/', authMiddleware, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 10;
+    const skip = (page - 1) * limit;
+    const filter = { userId: new mongoose.Types.ObjectId(req.user.id) };
+
+    if (req.query.startDate && req.query.endDate) {
+      const user = await User.findById(req.user.id);
+      const timezone = user.timezone || 'UTC';
+      const start = moment.tz(req.query.startDate + " 00:00", timezone).utc().toDate();
+      const end = moment.tz(req.query.endDate + " 23:59:59.999", timezone).utc().toDate();
+      filter.fecha = { $gte: start, $lte: end };
+    }
+
+    const total = await Task.countDocuments(filter);
+    const tasks = await Task.find(filter)
+      .sort({ fecha: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    res.json({
+      tasks,
+      total,
+      page,
+      pages: Math.ceil(total / limit)
+    });
   } catch (err) {
     console.error(err);
     res.status(500).send("Server error");
   }
 });
 
-// GET /api/tasks/:id
+// GET /api/tasks/:id - Obtener tarea por ID
 router.get('/:id', authMiddleware, async (req, res) => {
   try {
     const task = await Task.findOne({
@@ -213,30 +250,22 @@ router.get('/:id', authMiddleware, async (req, res) => {
   }
 });
 
-// POST /api/tasks (Modo Clásico - Create)
+// POST /api/tasks - Crear tarea manual (usa la zona horaria del usuario)
 router.post('/', authMiddleware, async (req, res) => {
   const { fecha, taskingHours, exceedHours, descripcion } = req.body;
   try {
-    // Convertir la fecha (se espera en formato "yyyy-MM-dd") a objeto Date local
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+    const fullRate = user.hourlyRate;
+    const timezone = user.timezone || 'UTC';
+
     let localDate;
     if (fecha) {
-      const parts = fecha.split("-");
-      if (parts.length === 3) {
-        localDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
-      } else {
-        localDate = new Date(fecha);
-      }
+      localDate = moment.tz(fecha + " 00:00", timezone).toDate();
     } else {
-      localDate = new Date();
+      localDate = moment.tz(timezone).toDate();
     }
     
-    const user = await User.findById(req.user.id);
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-    const fullRate = user.hourlyRate;
-    
-    // Calcular el monto: monto = (taskingHours * fullRate) + (exceedHours * fullRate * 0.3)
     const monto = Number(((taskingHours * fullRate) + (exceedHours * fullRate * 0.3)).toFixed(2));
     
     const task = new Task({
@@ -256,7 +285,7 @@ router.post('/', authMiddleware, async (req, res) => {
   }
 });
 
-// PUT /api/tasks/:id (Modo Clásico - Edit)
+// PUT /api/tasks/:id - Editar tarea
 router.put('/:id', authMiddleware, async (req, res) => {
   const { fecha, taskingHours, exceedHours, descripcion } = req.body;
   try {
@@ -268,23 +297,16 @@ router.put('/:id', authMiddleware, async (req, res) => {
       return res.status(404).json({ message: 'Task not found' });
     }
     if (fecha) {
-      const parts = fecha.split("-");
-      if (parts.length === 3) {
-        task.fecha = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
-      } else {
-        task.fecha = new Date(fecha);
-      }
+      const user = await User.findById(req.user.id);
+      const timezone = user.timezone || 'UTC';
+      task.fecha = moment.tz(fecha + " 00:00", timezone).toDate();
     }
     task.taskingHours = taskingHours !== undefined ? taskingHours : task.taskingHours;
     task.exceedHours = exceedHours !== undefined ? exceedHours : task.exceedHours;
     task.horas = Number(task.taskingHours) + Number(task.exceedHours);
     task.descripcion = descripcion !== undefined ? descripcion : task.descripcion;
     
-    // Recalcular el monto usando la tarifa del usuario
     const user = await User.findById(req.user.id);
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
     const fullRate = user.hourlyRate;
     task.monto = Number(((task.taskingHours * fullRate) + (task.exceedHours * fullRate * 0.3)).toFixed(2));
     
@@ -296,7 +318,34 @@ router.put('/:id', authMiddleware, async (req, res) => {
   }
 });
 
-// DELETE /api/tasks/:id (Modo Clásico)
+/* -----------------------------------------------------
+   Bulk Deletion
+----------------------------------------------------- */
+router.delete('/bulk', authMiddleware, async (req, res) => {
+  try {
+    const userId = new mongoose.Types.ObjectId(req.user.id);
+    if (req.body.ids && Array.isArray(req.body.ids) && req.body.ids.length > 0) {
+      const ids = req.body.ids.map(id => new mongoose.Types.ObjectId(id));
+      const result = await Task.deleteMany({ _id: { $in: ids }, userId });
+      return res.json({ message: `Deleted ${result.deletedCount} selected tasks`, totalDeleted: result.deletedCount });
+    }
+    const limit = parseInt(req.body.limit) || 100;
+    let totalDeleted = 0;
+    while (true) {
+      const tasks = await Task.find({ userId }).limit(limit).select('_id');
+      if (tasks.length === 0) break;
+      const ids = tasks.map(task => task._id);
+      const result = await Task.deleteMany({ _id: { $in: ids } });
+      totalDeleted += result.deletedCount;
+    }
+    res.json({ message: `Deleted ${totalDeleted} tasks in batches`, totalDeleted });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error deleting tasks' });
+  }
+});
+
+// DELETE /api/tasks/:id - Eliminar tarea individual
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
     const task = await Task.findOneAndDelete({

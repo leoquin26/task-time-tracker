@@ -1,3 +1,4 @@
+// models/User.js
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
@@ -7,7 +8,7 @@ const UserSchema = new mongoose.Schema({
     required: true,
     unique: true,
   },
-  // El campo email es opcional, por lo que no se define un valor por defecto.
+  // El campo email es opcional
   email: {
     type: String,
     required: false,
@@ -20,9 +21,14 @@ const UserSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  // Nuevo campo para la zona horaria (ejemplo: "America/Lima")
+  timezone: {
+    type: String,
+    default: "UTC"
+  },
 }, { timestamps: true });
 
-// Se crea un índice único para "email" que solo se aplicará cuando el campo exista y sea distinto de null.
+// Índice único para email cuando existe
 UserSchema.index(
   { email: 1 },
   { unique: true, partialFilterExpression: { email: { $exists: true, $ne: null } } }

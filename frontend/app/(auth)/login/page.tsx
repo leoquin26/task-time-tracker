@@ -1,4 +1,4 @@
-// Frontend/pages/login.tsx (o similar)
+// pages/login.tsx
 "use client";
 
 import { useState } from "react";
@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Clock } from 'lucide-react';
+import { Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function LoginPage() {
@@ -23,26 +23,21 @@ export default function LoginPage() {
     e.preventDefault();
     setIsLoading(true);
 
+    // Detectar la zona horaria del navegador
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
     try {
       const response = await fetch(`${apiUrl}/api/users/login`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ username, password }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password, timezone }),
       });
-
       const data = await response.json();
-
       if (!response.ok) {
         throw new Error(data.message || "Login failed");
       }
-
-      // Store token in localStorage
       localStorage.setItem("token", data.token);
-      
       toast.success("Has iniciado sesión correctamente");
-      
       router.push("/dashboard");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Error al iniciar sesión");
@@ -93,7 +88,7 @@ export default function LoginPage() {
               {isLoading ? "Logging in..." : "Login"}
             </Button>
             <div className="mt-4 text-center text-sm">
-              Don&apos;t have an account?{" "}
+              Don't have an account?{" "}
               <Link href="/register" className="underline">
                 Sign up
               </Link>

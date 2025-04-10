@@ -1,4 +1,4 @@
-// Frontend/pages/register.tsx (o similar)
+// pages/register.tsx
 "use client";
 
 import { useState } from "react";
@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Clock } from 'lucide-react';
+import { Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function RegisterPage() {
@@ -22,27 +22,22 @@ export default function RegisterPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    
+    // Detectar la zona horaria del navegador
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
     try {
       const response = await fetch(`${apiUrl}/api/users/register`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ username, password }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password, timezone }),
       });
-
       const data = await response.json();
-
       if (!response.ok) {
         throw new Error(data.message || "Registration failed");
       }
-
-      // Store token in localStorage
       localStorage.setItem("token", data.token);
-      
       toast.success("Tu cuenta ha sido creada correctamente");
-      
       router.push("/dashboard");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Error al registrarse");

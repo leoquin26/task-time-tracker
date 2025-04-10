@@ -11,6 +11,7 @@ const taskRoutes = require('./routes/tasks');
 const metricsRoutes = require('./routes/metrics');
 const userRoutes = require('./routes/user');
 const migrateRoutes = require('./routes/migrate');
+const csvUploadRoute = require('./routes/csvUpload');
 
 const app = express();
 
@@ -35,6 +36,7 @@ app.use('/api/users', authRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/metrics', metricsRoutes);
 app.use('/api/user', userRoutes);
+app.use('/api/csv', csvUploadRoute);
 
 // Mount the migration route as a GET endpoint (open and unprotected)
 app.use('/api/migrate', migrateRoutes);
