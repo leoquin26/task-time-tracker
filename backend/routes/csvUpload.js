@@ -6,29 +6,37 @@ const multer = require('multer');
 const csvParser = require('csv-parser');
 const fs = require('fs');
 const path = require('path');
-const Task = require('../models/Task'); // Ajusta la ruta según tu estructura
+const Task = require('../models/Task');
 const authMiddleware = require('../middleware/authMiddleware');
 
-// Define la ruta absoluta para la carpeta "uploads"
-const uploadsDir = path.join(__dirname, '..', 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
+// Define la carpeta de uploads: si existe la variable de entorno UPLOADS_DIR la usa; 
+// sino, en producción usa /tmp/uploads (directorio writable en entornos serverless)
+// y en desarrollo usa la carpeta local "uploads" en el directorio raíz del backend.
+const baseUploadsDir =
+  process.env.UPLOADS_DIR ||
+  (process.env.NODE_ENV === 'production'
+    ? '/tmp/uploads'
+    : path.join(__dirname, '..', 'uploads'));
+
+if (!fs.existsSync(baseUploadsDir)) {
+  fs.mkdirSync(baseUploadsDir, { recursive: true });
 }
 
-// Configuración de multer para subir archivos CSV a la carpeta "uploads/"
+// Configuración de multer para subir archivos CSV a la carpeta definida
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, uploadsDir);
+    cb(null, baseUploadsDir);
   },
   filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
     cb(null, uniqueSuffix + path.extname(file.originalname));
   }
 });
 const upload = multer({ storage: storage });
 
 /**
- * Función para convertir una cadena de duración (ej. "1h 3m 34s", "47m 46s") a horas decimales.
+ * Convierte una cadena de duración en horas decimales.
+ * Soporta formatos como "1h 3m 34s", "47m 46s", "1h", etc.
  */
 function parseDuration(durationStr) {
   if (!durationStr || durationStr.trim() === '-') return 0;
@@ -36,14 +44,20 @@ function parseDuration(durationStr) {
   const hourMatch = durationStr.match(/(\d+)\s*h/i);
   const minuteMatch = durationStr.match(/(\d+)\s*m/i);
   const secondMatch = durationStr.match(/(\d+)\s*s/i);
-  if (hourMatch) { hours = parseInt(hourMatch[1], 10); }
-  if (minuteMatch) { minutes = parseInt(minuteMatch[1], 10); }
-  if (secondMatch) { seconds = parseInt(secondMatch[1], 10); }
+  if (hourMatch) {
+    hours = parseInt(hourMatch[1], 10);
+  }
+  if (minuteMatch) {
+    minutes = parseInt(minuteMatch[1], 10);
+  }
+  if (secondMatch) {
+    seconds = parseInt(secondMatch[1], 10);
+  }
   return hours + minutes / 60 + seconds / 3600;
 }
 
 /**
- * Función para limpiar la cadena de tasa (rateApplied) y convertirla a número.
+ * Limpia la tasa (rateApplied) a número.
  * Ejemplo: "$24.50/hr" => 24.50
  */
 function parseRate(rateStr) {
@@ -53,7 +67,7 @@ function parseRate(rateStr) {
 }
 
 /**
- * Función para parsear el payout (monto) a número.
+ * Parsea el payout (monto) a número.
  * Ejemplo: "$16.33" => 16.33
  */
 function parsePayout(payoutStr) {
@@ -64,7 +78,7 @@ function parsePayout(payoutStr) {
 
 /**
  * POST /api/tasks/upload-csv
- * Procesa un archivo CSV y agrega tareas en base a sus filas.
+ * Procesa un CSV y agrega tareas.
  * Se espera recibir el archivo CSV en el campo "file" del form-data.
  */
 router.post('/upload-csv', authMiddleware, upload.single('file'), async (req, res) => {
@@ -75,7 +89,7 @@ router.post('/upload-csv', authMiddleware, upload.single('file'), async (req, re
   const filePath = req.file.path;
   
   try {
-    // Leer el CSV y convertirlo en un array usando una promesa
+    // Leer el CSV y esperar a que se complete la lectura
     const csvData = await new Promise((resolve, reject) => {
       const results = [];
       fs.createReadStream(filePath)
@@ -85,20 +99,17 @@ router.post('/upload-csv', authMiddleware, upload.single('file'), async (req, re
         .on('error', (err) => reject(err));
     });
     
-    // Variables para almacenar tareas y agrupaciones
-    const grouped = {}; // Agrupación por clave compuesta (ej. itemID + fecha ISO)
+    // Agrupar filas que se deben combinar
+    const grouped = {}; // Clave: itemID + fecha (en formato ISO de solo fecha)
     const tasksToInsert = [];
     
-    // Iterar sobre cada fila del CSV
     for (const row of csvData) {
       // Se espera que el CSV tenga: workDate, itemID, duration, rateApplied, payout, payType, projectName, status
-      // Solo procesamos filas que tengan los campos mínimos requeridos
       if (!row.payType || !row.itemID || !row.workDate) continue;
       const payType = row.payType.trim().toLowerCase();
       
-      // Para registros que se agrupan (prepay, overtimepay, overtime)
+      // Para registros a agrupar (prepay, overtimepay, overtime)
       if (payType === 'prepay' || payType === 'overtimepay' || payType === 'overtime') {
-        // Creamos una clave compuesta usando itemID y la fecha (solo la parte de la fecha ISO)
         const workDateIso = new Date(row.workDate).toISOString().split('T')[0];
         const key = row.itemID.trim() + '-' + workDateIso;
         
@@ -136,8 +147,8 @@ router.post('/upload-csv', authMiddleware, upload.single('file'), async (req, re
           }
         }
       } else {
-        // Para registros individuales (ej. missionReward, hubstaffOperation, payAdjustment, etc.)
-        const task = {
+        // Para registros que se procesan de forma individual (missionReward, hubstaffOperation, payAdjustment, etc.)
+        let task = {
           userId: req.user.id,
           fecha: new Date(row.workDate),
           descripcion: `${row.payType} - ${row.projectName} - ${row.itemID}`,
@@ -155,10 +166,10 @@ router.post('/upload-csv', authMiddleware, upload.single('file'), async (req, re
       }
     }
     
-    // Procesar cada grupo acumulado
+    // Procesar las agrupaciones
     for (const key in grouped) {
       const group = grouped[key];
-      // Si sólo existe overtime sin prepay, utilizar únicamente overtime
+      // Si sólo existe overtime sin prepay, utiliza únicamente overtime
       if (!group.prepay && group.overtime) {
         const task = {
           userId: req.user.id,
@@ -190,19 +201,17 @@ router.post('/upload-csv', authMiddleware, upload.single('file'), async (req, re
       console.log(`Task procesada - itemID: ${group.itemID}, prepay: ${group.prepay.payoutSum}, overtime: ${group.overtime ? group.overtime.payoutSum : 0}, total: ${totalPayout}`);
     }
     
-    // Debug: imprimir tareas a insertar
     console.log("Tareas a insertar:", tasksToInsert);
     
-    // Inserción masiva de tareas
+    // Inserción masiva de las tareas en la base de datos
     const insertedTasks = await Task.insertMany(tasksToInsert);
     
-    // Eliminar el archivo CSV ya procesado
+    // Elimina el archivo CSV una vez procesado
     fs.unlinkSync(filePath);
     
     res.json({ message: 'CSV processed and tasks inserted', count: insertedTasks.length });
   } catch (err) {
     console.error("Error processing CSV data:", err);
-    // Si ocurre un error, eliminar el archivo para evitar acumulación
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
     }
