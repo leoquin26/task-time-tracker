@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -43,17 +43,17 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination"
 
-// Interfaz para las tareas (Task)
+// Task interface
 interface Task {
   _id: string
   fecha?: string
   horas?: number
   monto?: number
   descripcion?: string
-  selected?: boolean
+  selected?: boolean // Para la funcionalidad de selección
 }
 
-// Interfaz para el endpoint paginado de tareas
+// Response interface for paginated tasks
 interface TasksResponse {
   tasks: Task[]
   total: number
@@ -75,6 +75,7 @@ function safeFormatDate(dateStr?: string): string {
   if (!dateStr) return "Sin fecha"
   const date = new Date(dateStr)
   if (isNaN(date.getTime())) return "Fecha inválida"
+  // Ajusta agregando el offset de la zona horaria para mostrar la fecha como se almacenó
   date.setMinutes(date.getMinutes() + date.getTimezoneOffset())
   return format(date, "dd/MM/yyyy", { locale: es })
 }
@@ -104,40 +105,46 @@ function formatDuration(decimalHours: number): string {
 }
 
 export default function DashboardPage() {
-  // Estados para tareas y summary
+
   const [tasks, setTasks] = useState<Task[]>([])
-  const [summary, setSummary] = useState<Summary>({ totalTasks: 0, totalHours: 0, totalEarned: 0 })
   const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [activeFilter, setActiveFilter] = useState("all")
   const [customStartDate, setCustomStartDate] = useState<Date | undefined>(undefined)
   const [customEndDate, setCustomEndDate] = useState<Date | undefined>(undefined)
   const [specificDate, setSpecificDate] = useState<Date | undefined>(undefined)
-  const [isCalendarOpen, setIsCalendarOpen] = useState(false)
+  // Estos estados se usan para los cálculos de los otros tabs (no "all")
+  const [totalHours, setTotalHours] = useState(0)
+  const [totalAmount, setTotalAmount] = useState(0)
+  // Estados para selección de tareas
   const [selectMode, setSelectMode] = useState(false)
   const [isAllSelected, setIsAllSelected] = useState(false)
   const [selectedCount, setSelectedCount] = useState(0)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [isDeletingBulk, setIsDeletingBulk] = useState(false)
 
-  // Estados para la paginación
+  // Estados para la paginación (aplican solo a tabs distintos de "all")
   const [currentPage, setCurrentPage] = useState(1)
   const [totalTasks, setTotalTasks] = useState(0)
   const [pageSize, setPageSize] = useState(20)
   const [totalPages, setTotalPages] = useState(1)
 
+  // Estado para el resumen global (usado en tab "all")
+  const [summary, setSummary] = useState<Summary>({ totalTasks: 0, totalHours: 0, totalEarned: 0 })
+
   const router = useRouter()
   const apiUrl = process.env.NEXT_PUBLIC_API_URL
 
   /**
-   * Función para obtener las tareas paginadas según el filtro actual.
+   * Función para obtener las tareas.
+   * Para los tabs distintos de "all" se utiliza paginación.
+   * En "all" se utiliza un endpoint que devuelve TODAS las tareas (o se ignora la paginación).
    */
   const fetchTasks = async (filter = "all", page = 1, limit = pageSize) => {
     setIsLoading(true)
     const token = localStorage.getItem("token")
     let url = `${apiUrl}/api/tasks?page=${page}&limit=${limit}`
 
-    // Seleccionar URL según el filtro
     if (filter === "daily") {
       url = `${apiUrl}/api/tasks/filter/daily`
     } else if (filter === "weekly") {
@@ -153,6 +160,9 @@ export default function DashboardPage() {
       const nextDay = addDays(specificDate, 1)
       const formattedNextDay = format(nextDay, "yyyy-MM-dd")
       url = `${apiUrl}/api/tasks?startDate=${formattedDate}&endDate=${formattedNextDay}&page=${page}&limit=${limit}`
+    } else if (filter === "all") {
+      // Para el tab all usamos el query parameter 'all=true'
+      url = `${apiUrl}/api/tasks?all=true`
     }
 
     try {
@@ -166,14 +176,18 @@ export default function DashboardPage() {
       let tasksList: Task[] = []
       let totalCount = 0
 
-      if (Array.isArray(data)) {
-        // Respuesta sin paginación (endpoints filter)
+      if (filter === "all") {
+        // Para All, asumimos que el endpoint devuelve todas las tareas (sin paginación)
+        tasksList = data.tasks || data
+        totalCount = data.total || tasksList.length
+        setTotalPages(1)
+        setCurrentPage(1)
+      } else if (Array.isArray(data)) {
         tasksList = data
         totalCount = data.length
         setTotalPages(1)
         setCurrentPage(1)
       } else {
-        // Respuesta paginada
         tasksList = data.tasks
         totalCount = data.total
         setTotalTasks(data.total)
@@ -181,16 +195,24 @@ export default function DashboardPage() {
         setCurrentPage(data.page)
       }
 
-      // Agregar la propiedad "selected" a cada tarea
       const tasksWithSelection = tasksList.map((task: Task) => ({
         ...task,
         selected: false,
       }))
 
       setTasks(tasksWithSelection)
-      // NOTA: No recalculamos las métricas aquí; se usan los datos de 'summary' vía fetchSummary()
+      // Para tabs distintos de "all" usamos el total obtenido del endpoint de tareas
+      if (filter !== "all") setTotalTasks(totalCount)
       setIsAllSelected(false)
       setSelectedCount(0)
+
+      // Si no es el tab all, recalculamos las métricas de las tareas que se muestran en la lista
+      if (filter !== "all") {
+        const hours = tasksList.reduce((sum: number, task: Task) => sum + (task.horas || 0), 0)
+        const amount = tasksList.reduce((sum: number, task: Task) => sum + (task.monto || 0), 0)
+        setTotalHours(hours)
+        setTotalAmount(Number.parseFloat(amount.toFixed(2)))
+      }
     } catch (error) {
       toast.error("Failed to load tasks")
     } finally {
@@ -199,14 +221,13 @@ export default function DashboardPage() {
   }
 
   /**
-   * Función para obtener el resumen (summary) de todas las tareas (o filtradas por fecha) usando el endpoint /summary.
-   * Este resumen NO se ve afectado por la paginación.
+   * Función para obtener el resumen (summary) global de todas las tareas.
+   * Este resultado NO se verá afectado por la paginación.
    */
   const fetchSummary = async () => {
     const token = localStorage.getItem("token")
     let summaryUrl = `${apiUrl}/api/tasks/summary`
-    
-    // Si se aplicó un filtro por fecha, se pasan como query parameters.
+    // Si se aplicó un filtro por fecha (para tabs que no sean "all"), se añaden esos parámetros.
     if (activeFilter !== "all") {
       if (activeFilter === "custom" && customStartDate && customEndDate) {
         const formattedStart = format(customStartDate, "yyyy-MM-dd")
@@ -217,14 +238,9 @@ export default function DashboardPage() {
         const nextDay = addDays(specificDate, 1)
         const formattedNextDay = format(nextDay, "yyyy-MM-dd")
         summaryUrl += `?startDate=${formattedDate}&endDate=${formattedNextDay}`
-      } else if (activeFilter === "daily") {
-        // Aquí se podría reutilizar getDateRangeUser para obtener el rango del día.
-        // Por simplicidad, se puede llamar al endpoint con un query de fecha extraído del filtro.
-        // O bien podrías definir un caso específico.
       }
-      // Puedes ampliar para weekly y monthly si es necesario.
+      // Puedes agregar casos para weekly y monthly si lo deseas.
     }
-
     try {
       const response = await fetch(summaryUrl, {
         headers: { Authorization: `Bearer ${token}` },
@@ -241,7 +257,7 @@ export default function DashboardPage() {
 
   const handleFilterChange = (value: string) => {
     setActiveFilter(value)
-    setCurrentPage(1) // Reiniciar a la primera página
+    setCurrentPage(1) // Reiniciar a la primera página al cambiar filtro
     fetchTasks(value, 1, pageSize)
     fetchSummary()
     setSelectMode(false)
@@ -251,13 +267,13 @@ export default function DashboardPage() {
     if (page < 1 || page > totalPages) return
     setCurrentPage(page)
     fetchTasks(activeFilter, page, pageSize)
-    // No es necesario actualizar summary en cambio de página, ya que sigue siendo el total
+    // El resumen global no se actualiza en cambio de página
   }
 
   const handlePageSizeChange = (value: string) => {
     const newPageSize = Number.parseInt(value)
     setPageSize(newPageSize)
-    setCurrentPage(1)
+    setCurrentPage(1) // Reiniciar a la primera página al cambiar tamaño de página
     fetchTasks(activeFilter, 1, newPageSize)
   }
 
@@ -329,7 +345,6 @@ export default function DashboardPage() {
     setSelectedCount(newSelectAllState ? tasks.length : 0)
   }
 
-  // Eliminación en bloque
   const deleteSelectedTasks = async () => {
     setIsDeletingBulk(true)
     const token = localStorage.getItem("token")
@@ -359,19 +374,16 @@ export default function DashboardPage() {
     }
   }
 
-  // Cuando se monta el componente, se cargan las tareas y el resumen
   useEffect(() => {
     fetchTasks()
     fetchSummary()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Filtrar tareas por búsqueda (usando descripción)
   const filteredTasks = tasks.filter((task) =>
     (task.descripcion || "").toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  // Etiqueta para el filtro
   const getFilterLabel = () => {
     switch (activeFilter) {
       case "daily":
@@ -395,7 +407,6 @@ export default function DashboardPage() {
     }
   }
 
-  // Generar ítems de paginación
   const renderPaginationItems = () => {
     const items = []
     const maxVisiblePages = 5
@@ -525,6 +536,7 @@ export default function DashboardPage() {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+
               <div className="relative flex-1">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input placeholder="Search tasks..." className="pl-8" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
@@ -628,23 +640,44 @@ export default function DashboardPage() {
             </div>
           ) : (
             <>
-              {/* Mostrar los datos del summary obtenidos de /api/tasks/summary */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                <Card className="p-4 bg-muted/50">
-                  <div className="font-medium text-sm text-muted-foreground">Total Tasks</div>
-                  <div className="text-2xl font-bold">{summary.totalTasks}</div>
-                </Card>
-                <Card className="p-4 bg-muted/50">
-                  <div className="font-medium text-sm text-muted-foreground">Total Duration</div>
-                  <div className="text-2xl font-bold">{formatDuration(summary.totalHours)}</div>
-                </Card>
-                <Card className="p-4 bg-muted/50">
-                  <div className="font-medium text-sm text-muted-foreground">Total Earned</div>
-                  <div className="text-2xl font-bold">
-                    ${ (summary.totalEarned ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
-                  </div>
-                </Card>
-              </div>
+              {/* Mostrar summary:
+                  Para el tab "all" se usa el summary global obtenido del endpoint /summary,
+                  para los demás se usan los valores calculados a partir de las tareas paginadas */}
+              {activeFilter === "all" ? (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                  <Card className="p-4 bg-muted/50">
+                    <div className="font-medium text-sm text-muted-foreground">Total Tasks</div>
+                    <div className="text-2xl font-bold">{summary.totalTasks}</div>
+                  </Card>
+                  <Card className="p-4 bg-muted/50">
+                    <div className="font-medium text-sm text-muted-foreground">Total Duration</div>
+                    <div className="text-2xl font-bold">{formatDuration(summary.totalHours)}</div>
+                  </Card>
+                  <Card className="p-4 bg-muted/50">
+                    <div className="font-medium text-sm text-muted-foreground">Total Earned</div>
+                    <div className="text-2xl font-bold">
+                      ${ (summary.totalEarned ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
+                    </div>
+                  </Card>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                  <Card className="p-4 bg-muted/50">
+                    <div className="font-medium text-sm text-muted-foreground">Total Tasks</div>
+                    <div className="text-2xl font-bold">{totalTasks}</div>
+                  </Card>
+                  <Card className="p-4 bg-muted/50">
+                    <div className="font-medium text-sm text-muted-foreground">Total Duration</div>
+                    <div className="text-2xl font-bold">{formatDuration(totalHours)}</div>
+                  </Card>
+                  <Card className="p-4 bg-muted/50">
+                    <div className="font-medium text-sm text-muted-foreground">Total Earned</div>
+                    <div className="text-2xl font-bold">
+                      ${ (totalAmount ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
+                    </div>
+                  </Card>
+                </div>
+              )}
 
               <div className="rounded-md border">
                 <Table>
@@ -652,7 +685,11 @@ export default function DashboardPage() {
                     <TableRow>
                       {selectMode && (
                         <TableHead className="w-12">
-                          <Checkbox checked={isAllSelected} onCheckedChange={toggleSelectAll} aria-label="Select all tasks" />
+                          <Checkbox
+                            checked={isAllSelected}
+                            onCheckedChange={toggleSelectAll}
+                            aria-label="Select all tasks"
+                          />
                         </TableHead>
                       )}
                       <TableHead>Date</TableHead>
@@ -677,7 +714,10 @@ export default function DashboardPage() {
                         <TableCell>{safeFormatDate(task.fecha)}</TableCell>
                         <TableCell>{formatDuration(task.horas || 0)}</TableCell>
                         <TableCell>
-                          ${ (task.monto ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
+                          $ {(task.monto ?? 0).toLocaleString("en-US", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
                         </TableCell>
                         <TableCell className="max-w-xs truncate">{task.descripcion || ""}</TableCell>
                         <TableCell className="text-right">
@@ -698,11 +738,12 @@ export default function DashboardPage() {
                 </Table>
               </div>
 
-              {/* Controles de paginación */}
-              {totalPages > 1 && activeFilter !== "daily" && activeFilter !== "weekly" && activeFilter !== "monthly" && (
+              {/* Controles de paginación se muestran solo para filtros distintos a "all" */}
+              {activeFilter !== "all" && totalPages > 1 && (
                 <div className="mt-4 flex items-center justify-between">
                   <div className="text-sm text-muted-foreground">
-                    Showing {Math.min((currentPage - 1) * pageSize + 1, totalTasks)} - {Math.min(currentPage * pageSize, totalTasks)} of {totalTasks} tasks
+                    Showing {Math.min((currentPage - 1) * pageSize + 1, totalTasks)} -{" "}
+                    {Math.min(currentPage * pageSize, totalTasks)} of {totalTasks} tasks
                   </div>
                   <Pagination>
                     <PaginationContent>
