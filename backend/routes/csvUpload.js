@@ -6,16 +6,17 @@ const multer = require('multer');
 const csvParser = require('csv-parser');
 const fs = require('fs');
 const path = require('path');
+const os = require('os'); // Se usa para obtener el directorio temporal
 const Task = require('../models/Task'); // Ajusta la ruta según tu estructura
 const authMiddleware = require('../middleware/authMiddleware');
 
-// Define la ruta absoluta para la carpeta "uploads"
-const uploadsDir = path.join(__dirname, '..', 'uploads');
+// Usa el directorio temporal del sistema para almacenar archivos en Vercel (/tmp)
+const uploadsDir = path.join(os.tmpdir(), 'uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// Configuración de multer para subir archivos CSV a la carpeta "uploads/"
+// Configuración de multer para guardar archivos CSV en el directorio temporal
 const storage = multer.diskStorage({
   destination: function(req, file, cb) {
     cb(null, uploadsDir);
@@ -55,7 +56,7 @@ function parsePayout(payoutStr) {
 
 /**
  * POST /api/csv/upload-csv
- * Procesa un CSV y agrega tareas.
+ * Procesa un CSV y agrega tareas a la BD.
  * Se espera recibir el archivo CSV en el campo "file" del form-data.
  */
 router.post('/upload-csv', authMiddleware, upload.single('file'), async (req, res) => {
@@ -80,9 +81,9 @@ router.post('/upload-csv', authMiddleware, upload.single('file'), async (req, re
           if (!row.payType || !row.itemID || !row.workDate) continue;
           const payType = row.payType.trim().toLowerCase();
           
-          // Si es un registro que se agrupa (prepay, overtimepay, overtime)
+          // Si es un registro agrupable (prepay, overtimepay, overtime)
           if (payType === 'prepay' || payType === 'overtimepay' || payType === 'overtime') {
-            // Creamos una clave compuesta usando itemID y la fecha (solo la parte de la fecha)
+            // Usamos itemID y la parte de la fecha (en formato ISO sin tiempo) como clave
             const workDateIso = new Date(row.workDate).toISOString().split('T')[0];
             const key = row.itemID.trim() + '-' + workDateIso;
             
@@ -108,7 +109,7 @@ router.post('/upload-csv', authMiddleware, upload.single('file'), async (req, re
                   payoutSum: parsePayout(row.payout)
                 };
               }
-            } else { // overtime o overtimepay
+            } else { // para overtime o overtimepay
               if (grouped[key].overtime) {
                 grouped[key].overtime.durationSum += parseDuration(row.duration);
                 grouped[key].overtime.payoutSum += parsePayout(row.payout);
@@ -120,7 +121,7 @@ router.post('/upload-csv', authMiddleware, upload.single('file'), async (req, re
               }
             }
           } else {
-            // Para tipos que se procesan individualmente (missionReward, hubstaffOperation, payAdjustment, etc.)
+            // Procesar registros individuales (missionReward, hubstaffOperation, payAdjustment, etc.)
             let task = {
               userId: req.user.id,
               fecha: new Date(row.workDate),
@@ -139,7 +140,7 @@ router.post('/upload-csv', authMiddleware, upload.single('file'), async (req, re
           }
         }
         
-        // Procesar cada grupo acumulado
+        // Procesar los grupos acumulados
         for (const key in grouped) {
           const group = grouped[key];
           if (!group.prepay && group.overtime) {
@@ -187,7 +188,7 @@ router.post('/upload-csv', authMiddleware, upload.single('file'), async (req, re
 /**
  * POST /api/csv/delete-tasks-from-csv
  * Procesa un CSV, extrae todos los itemIDs y elimina todas las tareas del usuario cuya
- * descripción contenga alguno de esos itemIDs.
+ * descripción contenga alguno de esos itemIDs (búsqueda case-insensitive).
  */
 router.post('/delete-tasks-from-csv', authMiddleware, upload.single('file'), async (req, res) => {
   if (!req.file) {
@@ -202,7 +203,7 @@ router.post('/delete-tasks-from-csv', authMiddleware, upload.single('file'), asy
     .on('data', (data) => csvData.push(data))
     .on('end', async () => {
       try {
-        // Extraer todos los itemIDs únicos del CSV
+        // Extraer itemIDs únicos del CSV
         const itemIDs = new Set();
         for (const row of csvData) {
           if (row.itemID) {
@@ -214,7 +215,7 @@ router.post('/delete-tasks-from-csv', authMiddleware, upload.single('file'), asy
           return res.status(400).json({ message: 'No itemIDs found in CSV' });
         }
         
-        // Construir una consulta que busque en "descripcion" alguno de los itemIDs (case insensitive)
+        // Construir consulta para buscar en la descripción alguno de los itemIDs (expresiones regulares, case-insensitive)
         const orConditions = itemIDArray.map(id => ({
           descripcion: { $regex: id, $options: 'i' }
         }));
