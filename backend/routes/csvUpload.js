@@ -11,15 +11,11 @@ const Task = require('../models/Task'); // Ajusta la ruta según tu estructura
 const authMiddleware = require('../middleware/authMiddleware');
 
 // Usa el directorio temporal del sistema para almacenar archivos en Vercel (/tmp)
-const baseUploadsDir =
-  process.env.UPLOADS_DIR ||
-  (process.env.NODE_ENV === 'production'
-    ? '/tmp/uploads'
-    : path.join(__dirname, '..', 'uploads'));
-
-if (!fs.existsSync(baseUploadsDir)) {
-  fs.mkdirSync(baseUploadsDir, { recursive: true });
+const uploadsDir = path.join(os.tmpdir(), 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
 }
+
 // Configuración de multer para guardar archivos CSV en el directorio temporal
 const storage = multer.diskStorage({
   destination: function(req, file, cb) {
