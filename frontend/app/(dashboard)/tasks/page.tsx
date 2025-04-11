@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -43,41 +43,44 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination"
 
-// Task interface
+// Interfaz para las tareas (Task)
 interface Task {
   _id: string
   fecha?: string
   horas?: number
   monto?: number
   descripcion?: string
-  selected?: boolean // Added for selection functionality
+  selected?: boolean
 }
 
-// Response interface for paginated tasks
+// Interfaz para el endpoint paginado de tareas
 interface TasksResponse {
   tasks: Task[]
-  total: number // Cambio de totalCount a total
+  total: number
   page: number
-  pages: number // Añadir pages que viene directamente del API
+  pages: number
+}
+
+// Interfaz para el summary
+interface Summary {
+  totalTasks: number
+  totalHours: number
+  totalEarned: number
 }
 
 /**
- * Helper function to safely format a date string in Spanish.
- * It adjusts for the local timezone so that a UTC date like
- * "2025-04-06T00:00:00.000Z" is shown as "06/04/2025" regardless of the browser's timezone.
+ * Helper function para formatear una fecha de forma segura (ajustando el offset de zona horaria).
  */
 function safeFormatDate(dateStr?: string): string {
   if (!dateStr) return "Sin fecha"
   const date = new Date(dateStr)
   if (isNaN(date.getTime())) return "Fecha inválida"
-  // Ajusta agregando el offset de la zona horaria para mostrar la fecha como se almacenó
   date.setMinutes(date.getMinutes() + date.getTimezoneOffset())
   return format(date, "dd/MM/yyyy", { locale: es })
 }
 
 /**
- * Helper function to format a date for filter labels in Spanish.
- * Se aplica el mismo ajuste de zona horaria.
+ * Helper function para formatear una fecha para mostrarla en el filtro.
  */
 function formatDateToSpanish(date: Date): string {
   const adjustedDate = new Date(date)
@@ -86,7 +89,7 @@ function formatDateToSpanish(date: Date): string {
 }
 
 /**
- * Helper function to convert decimal hours to a formatted duration string "Xh Ym Zs"
+ * Helper function para convertir horas decimales a una cadena con formato "Xh Ym Zs"
  */
 function formatDuration(decimalHours: number): string {
   const totalSeconds = Math.round(decimalHours * 3600)
@@ -101,15 +104,15 @@ function formatDuration(decimalHours: number): string {
 }
 
 export default function DashboardPage() {
+  // Estados para tareas y summary
   const [tasks, setTasks] = useState<Task[]>([])
+  const [summary, setSummary] = useState<Summary>({ totalTasks: 0, totalHours: 0, totalEarned: 0 })
   const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [activeFilter, setActiveFilter] = useState("all")
   const [customStartDate, setCustomStartDate] = useState<Date | undefined>(undefined)
   const [customEndDate, setCustomEndDate] = useState<Date | undefined>(undefined)
   const [specificDate, setSpecificDate] = useState<Date | undefined>(undefined)
-  const [totalHours, setTotalHours] = useState(0)
-  const [totalAmount, setTotalAmount] = useState(0)
   const [isCalendarOpen, setIsCalendarOpen] = useState(false)
   const [selectMode, setSelectMode] = useState(false)
   const [isAllSelected, setIsAllSelected] = useState(false)
@@ -117,7 +120,7 @@ export default function DashboardPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [isDeletingBulk, setIsDeletingBulk] = useState(false)
 
-  // Pagination states
+  // Estados para la paginación
   const [currentPage, setCurrentPage] = useState(1)
   const [totalTasks, setTotalTasks] = useState(0)
   const [pageSize, setPageSize] = useState(20)
@@ -126,12 +129,15 @@ export default function DashboardPage() {
   const router = useRouter()
   const apiUrl = process.env.NEXT_PUBLIC_API_URL
 
+  /**
+   * Función para obtener las tareas paginadas según el filtro actual.
+   */
   const fetchTasks = async (filter = "all", page = 1, limit = pageSize) => {
     setIsLoading(true)
     const token = localStorage.getItem("token")
     let url = `${apiUrl}/api/tasks?page=${page}&limit=${limit}`
 
-    // Determine URL based on filter
+    // Seleccionar URL según el filtro
     if (filter === "daily") {
       url = `${apiUrl}/api/tasks/filter/daily`
     } else if (filter === "weekly") {
@@ -144,7 +150,7 @@ export default function DashboardPage() {
       url = `${apiUrl}/api/tasks?startDate=${formattedStartDate}&endDate=${formattedEndDate}&page=${page}&limit=${limit}`
     } else if (filter === "specific-day" && specificDate) {
       const formattedDate = format(specificDate, "yyyy-MM-dd")
-      const nextDay = addDays(new Date(formattedDate), 1)
+      const nextDay = addDays(specificDate, 1)
       const formattedNextDay = format(nextDay, "yyyy-MM-dd")
       url = `${apiUrl}/api/tasks?startDate=${formattedDate}&endDate=${formattedNextDay}&page=${page}&limit=${limit}`
     }
@@ -156,43 +162,35 @@ export default function DashboardPage() {
       if (!response.ok) {
         throw new Error("Failed to fetch tasks")
       }
-
-      // Handle both paginated and non-paginated responses
       const data = await response.json()
       let tasksList: Task[] = []
       let totalCount = 0
 
       if (Array.isArray(data)) {
-        // Non-paginated response (filter endpoints)
+        // Respuesta sin paginación (endpoints filter)
         tasksList = data
         totalCount = data.length
         setTotalPages(1)
         setCurrentPage(1)
       } else {
-        // Paginated response
+        // Respuesta paginada
         tasksList = data.tasks
-        totalCount = data.total // Cambiar de data.totalCount a data.total
+        totalCount = data.total
         setTotalTasks(data.total)
-        setTotalPages(data.pages) // Usar directamente data.pages en lugar de calcular
+        setTotalPages(data.pages)
         setCurrentPage(data.page)
       }
 
-      // Add selected property to each task
+      // Agregar la propiedad "selected" a cada tarea
       const tasksWithSelection = tasksList.map((task: Task) => ({
         ...task,
         selected: false,
       }))
 
       setTasks(tasksWithSelection)
-      setTotalTasks(totalCount)
+      // NOTA: No recalculamos las métricas aquí; se usan los datos de 'summary' vía fetchSummary()
       setIsAllSelected(false)
       setSelectedCount(0)
-
-      // Calculate totals for displayed tasks
-      const hours = tasksList.reduce((sum: number, task: Task) => sum + (task.horas || 0), 0)
-      const amount = tasksList.reduce((sum: number, task: Task) => sum + (task.monto || 0), 0)
-      setTotalHours(hours)
-      setTotalAmount(Number.parseFloat(amount.toFixed(2)))
     } catch (error) {
       toast.error("Failed to load tasks")
     } finally {
@@ -200,11 +198,52 @@ export default function DashboardPage() {
     }
   }
 
+  /**
+   * Función para obtener el resumen (summary) de todas las tareas (o filtradas por fecha) usando el endpoint /summary.
+   * Este resumen NO se ve afectado por la paginación.
+   */
+  const fetchSummary = async () => {
+    const token = localStorage.getItem("token")
+    let summaryUrl = `${apiUrl}/api/tasks/summary`
+    
+    // Si se aplicó un filtro por fecha, se pasan como query parameters.
+    if (activeFilter !== "all") {
+      if (activeFilter === "custom" && customStartDate && customEndDate) {
+        const formattedStart = format(customStartDate, "yyyy-MM-dd")
+        const formattedEnd = format(customEndDate, "yyyy-MM-dd")
+        summaryUrl += `?startDate=${formattedStart}&endDate=${formattedEnd}`
+      } else if (activeFilter === "specific-day" && specificDate) {
+        const formattedDate = format(specificDate, "yyyy-MM-dd")
+        const nextDay = addDays(specificDate, 1)
+        const formattedNextDay = format(nextDay, "yyyy-MM-dd")
+        summaryUrl += `?startDate=${formattedDate}&endDate=${formattedNextDay}`
+      } else if (activeFilter === "daily") {
+        // Aquí se podría reutilizar getDateRangeUser para obtener el rango del día.
+        // Por simplicidad, se puede llamar al endpoint con un query de fecha extraído del filtro.
+        // O bien podrías definir un caso específico.
+      }
+      // Puedes ampliar para weekly y monthly si es necesario.
+    }
+
+    try {
+      const response = await fetch(summaryUrl, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!response.ok) {
+        throw new Error("Failed to fetch summary")
+      }
+      const data = await response.json()
+      setSummary(data)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Error fetching summary")
+    }
+  }
+
   const handleFilterChange = (value: string) => {
     setActiveFilter(value)
-    setCurrentPage(1) // Reset to first page when changing filters
+    setCurrentPage(1) // Reiniciar a la primera página
     fetchTasks(value, 1, pageSize)
-    // Exit select mode when changing filters
+    fetchSummary()
     setSelectMode(false)
   }
 
@@ -212,20 +251,22 @@ export default function DashboardPage() {
     if (page < 1 || page > totalPages) return
     setCurrentPage(page)
     fetchTasks(activeFilter, page, pageSize)
+    // No es necesario actualizar summary en cambio de página, ya que sigue siendo el total
   }
 
   const handlePageSizeChange = (value: string) => {
     const newPageSize = Number.parseInt(value)
     setPageSize(newPageSize)
-    setCurrentPage(1) // Reset to first page when changing page size
+    setCurrentPage(1)
     fetchTasks(activeFilter, 1, newPageSize)
   }
 
   const handleCustomDateFilter = () => {
     if (customStartDate && customEndDate) {
       setActiveFilter("custom")
-      setCurrentPage(1) // Reset to first page when applying filter
+      setCurrentPage(1)
       fetchTasks("custom", 1, pageSize)
+      fetchSummary()
     } else {
       toast.error("Please select a start and end date")
     }
@@ -234,8 +275,9 @@ export default function DashboardPage() {
   const handleSpecificDayFilter = () => {
     if (specificDate) {
       setActiveFilter("specific-day")
-      setCurrentPage(1) // Reset to first page when applying filter
+      setCurrentPage(1)
       fetchTasks("specific-day", 1, pageSize)
+      fetchSummary()
       setIsCalendarOpen(false)
     } else {
       toast.error("Please select a date")
@@ -253,34 +295,32 @@ export default function DashboardPage() {
       if (!response.ok) throw new Error("Failed to delete task")
       toast.success("Task deleted successfully")
       fetchTasks(activeFilter, currentPage, pageSize)
+      fetchSummary()
     } catch (error) {
       toast.error("Error deleting task")
     }
   }
 
-  // Toggle selection mode
+  // Funciones para selección de tareas
   const toggleSelectMode = () => {
     setSelectMode(!selectMode)
     if (selectMode) {
-      // Clear all selections when exiting select mode
       setTasks(tasks.map((task) => ({ ...task, selected: false })))
       setIsAllSelected(false)
       setSelectedCount(0)
     }
   }
 
-  // Toggle selection of a single task
   const toggleTaskSelection = (taskId: string) => {
-    const updatedTasks = tasks.map((task) => (task._id === taskId ? { ...task, selected: !task.selected } : task))
+    const updatedTasks = tasks.map((task) =>
+      task._id === taskId ? { ...task, selected: !task.selected } : task
+    )
     setTasks(updatedTasks)
-
-    // Update selected count and all selected state
     const selectedTasks = updatedTasks.filter((task) => task.selected)
     setSelectedCount(selectedTasks.length)
     setIsAllSelected(selectedTasks.length === updatedTasks.length && updatedTasks.length > 0)
   }
 
-  // Toggle selection of all tasks
   const toggleSelectAll = () => {
     const newSelectAllState = !isAllSelected
     const updatedTasks = tasks.map((task) => ({ ...task, selected: newSelectAllState }))
@@ -289,14 +329,11 @@ export default function DashboardPage() {
     setSelectedCount(newSelectAllState ? tasks.length : 0)
   }
 
-  // Delete selected tasks in bulk
+  // Eliminación en bloque
   const deleteSelectedTasks = async () => {
     setIsDeletingBulk(true)
     const token = localStorage.getItem("token")
-
-    // Get IDs of selected tasks
     const selectedIds = tasks.filter((task) => task.selected).map((task) => task._id)
-
     try {
       const response = await fetch(`${apiUrl}/api/tasks/bulk`, {
         method: "DELETE",
@@ -306,18 +343,13 @@ export default function DashboardPage() {
         },
         body: JSON.stringify({ ids: selectedIds }),
       })
-
       if (!response.ok) {
         throw new Error("Failed to delete tasks")
       }
-
       const result = await response.json()
       toast.success(`Successfully deleted ${result.totalDeleted} tasks`)
-
-      // Refresh the task list
       fetchTasks(activeFilter, currentPage, pageSize)
-
-      // Exit select mode
+      fetchSummary()
       setSelectMode(false)
       setIsDeleteDialogOpen(false)
     } catch (error) {
@@ -327,17 +359,19 @@ export default function DashboardPage() {
     }
   }
 
+  // Cuando se monta el componente, se cargan las tareas y el resumen
   useEffect(() => {
     fetchTasks()
+    fetchSummary()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Filter tasks safely using a fallback for description
+  // Filtrar tareas por búsqueda (usando descripción)
   const filteredTasks = tasks.filter((task) =>
-    (task.descripcion || "").toLowerCase().includes(searchTerm.toLowerCase()),
+    (task.descripcion || "").toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  // Use our safeFormatDate to display dates in Spanish
+  // Etiqueta para el filtro
   const getFilterLabel = () => {
     switch (activeFilter) {
       case "daily":
@@ -348,7 +382,11 @@ export default function DashboardPage() {
         return "This Month"
       case "custom":
         return customStartDate && customEndDate
-          ? `${format(customStartDate, "dd 'de' MMMM 'de' yyyy", { locale: es })} to ${format(customEndDate, "dd 'de' MMMM 'de' yyyy", { locale: es })}`
+          ? `${format(customStartDate, "dd 'de' MMMM 'de' yyyy", { locale: es })} to ${format(
+              customEndDate,
+              "dd 'de' MMMM 'de' yyyy",
+              { locale: es }
+            )}`
           : "Custom Period"
       case "specific-day":
         return specificDate ? formatDateToSpanish(specificDate) : "Specific Day"
@@ -357,61 +395,55 @@ export default function DashboardPage() {
     }
   }
 
-  // Generate pagination items
+  // Generar ítems de paginación
   const renderPaginationItems = () => {
     const items = []
     const maxVisiblePages = 5
 
-    // Always show first page
     items.push(
       <PaginationItem key="first">
         <PaginationLink isActive={currentPage === 1} onClick={() => handlePageChange(1)}>
           1
         </PaginationLink>
-      </PaginationItem>,
+      </PaginationItem>
     )
 
-    // Calculate range of visible pages
     const startPage = Math.max(2, currentPage - Math.floor(maxVisiblePages / 2))
     const endPage = Math.min(totalPages - 1, startPage + maxVisiblePages - 3)
 
-    // Adjust if we're near the beginning
     if (startPage > 2) {
       items.push(
         <PaginationItem key="ellipsis-start">
           <PaginationEllipsis />
-        </PaginationItem>,
+        </PaginationItem>
       )
     }
 
-    // Add middle pages
     for (let i = startPage; i <= endPage; i++) {
       items.push(
         <PaginationItem key={i}>
           <PaginationLink isActive={currentPage === i} onClick={() => handlePageChange(i)}>
             {i}
           </PaginationLink>
-        </PaginationItem>,
+        </PaginationItem>
       )
     }
 
-    // Add ellipsis if needed
     if (endPage < totalPages - 1) {
       items.push(
         <PaginationItem key="ellipsis-end">
           <PaginationEllipsis />
-        </PaginationItem>,
+        </PaginationItem>
       )
     }
 
-    // Always show last page if there's more than one page
     if (totalPages > 1) {
       items.push(
         <PaginationItem key="last">
           <PaginationLink isActive={currentPage === totalPages} onClick={() => handlePageChange(totalPages)}>
             {totalPages}
           </PaginationLink>
-        </PaginationItem>,
+        </PaginationItem>
       )
     }
 
@@ -458,12 +490,7 @@ export default function DashboardPage() {
       <Card>
         <CardContent className="p-6">
           <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0 mb-4">
-            <Tabs
-              defaultValue="all"
-              value={activeFilter}
-              onValueChange={handleFilterChange}
-              className="w-full md:w-auto"
-            >
+            <Tabs defaultValue="all" value={activeFilter} onValueChange={handleFilterChange} className="w-full md:w-auto">
               <TabsList className="grid grid-cols-4 w-full md:w-auto">
                 <TabsTrigger value="all">All</TabsTrigger>
                 <TabsTrigger value="daily">Today</TabsTrigger>
@@ -498,15 +525,9 @@ export default function DashboardPage() {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-
               <div className="relative flex-1">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search tasks..."
-                  className="pl-8"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
+                <Input placeholder="Search tasks..." className="pl-8" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
               </div>
             </div>
           </div>
@@ -519,20 +540,11 @@ export default function DashboardPage() {
                   <PopoverTrigger asChild>
                     <Button variant="outline" className="w-full justify-start text-left font-normal">
                       <CalendarDays className="mr-2 h-4 w-4" />
-                      {customStartDate ? (
-                        format(customStartDate, "dd 'de' MMMM 'de' yyyy", { locale: es })
-                      ) : (
-                        <span>Select date</span>
-                      )}
+                      {customStartDate ? format(customStartDate, "dd 'de' MMMM 'de' yyyy", { locale: es }) : <span>Select date</span>}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
-                    <CalendarComponent
-                      mode="single"
-                      selected={customStartDate}
-                      onSelect={setCustomStartDate}
-                      initialFocus
-                    />
+                    <CalendarComponent mode="single" selected={customStartDate} onSelect={setCustomStartDate} initialFocus />
                   </PopoverContent>
                 </Popover>
               </div>
@@ -542,20 +554,11 @@ export default function DashboardPage() {
                   <PopoverTrigger asChild>
                     <Button variant="outline" className="w-full justify-start text-left font-normal">
                       <CalendarDays className="mr-2 h-4 w-4" />
-                      {customEndDate ? (
-                        format(customEndDate, "dd 'de' MMMM 'de' yyyy", { locale: es })
-                      ) : (
-                        <span>Select date</span>
-                      )}
+                      {customEndDate ? format(customEndDate, "dd 'de' MMMM 'de' yyyy", { locale: es }) : <span>Select date</span>}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
-                    <CalendarComponent
-                      mode="single"
-                      selected={customEndDate}
-                      onSelect={setCustomEndDate}
-                      initialFocus
-                    />
+                    <CalendarComponent mode="single" selected={customEndDate} onSelect={setCustomEndDate} initialFocus />
                   </PopoverContent>
                 </Popover>
               </div>
@@ -579,12 +582,7 @@ export default function DashboardPage() {
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="start">
-                      <CalendarComponent
-                        mode="single"
-                        selected={specificDate}
-                        onSelect={setSpecificDate}
-                        initialFocus
-                      />
+                      <CalendarComponent mode="single" selected={specificDate} onSelect={setSpecificDate} initialFocus />
                     </PopoverContent>
                   </Popover>
                 </div>
@@ -598,8 +596,6 @@ export default function DashboardPage() {
 
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold">{getFilterLabel()}</h2>
-
-            {/* Page size selector */}
             {activeFilter !== "daily" && activeFilter !== "weekly" && activeFilter !== "monthly" && (
               <div className="flex items-center gap-2">
                 <span className="text-sm text-muted-foreground">Show:</span>
@@ -632,20 +628,20 @@ export default function DashboardPage() {
             </div>
           ) : (
             <>
+              {/* Mostrar los datos del summary obtenidos de /api/tasks/summary */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                 <Card className="p-4 bg-muted/50">
                   <div className="font-medium text-sm text-muted-foreground">Total Tasks</div>
-                  <div className="text-2xl font-bold">{totalTasks}</div>
+                  <div className="text-2xl font-bold">{summary.totalTasks}</div>
                 </Card>
                 <Card className="p-4 bg-muted/50">
                   <div className="font-medium text-sm text-muted-foreground">Total Duration</div>
-                  <div className="text-2xl font-bold">{formatDuration(totalHours)}</div>
+                  <div className="text-2xl font-bold">{formatDuration(summary.totalHours)}</div>
                 </Card>
                 <Card className="p-4 bg-muted/50">
                   <div className="font-medium text-sm text-muted-foreground">Total Earned</div>
                   <div className="text-2xl font-bold">
-                    $
-                    {(totalAmount ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ${ (summary.totalEarned ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
                   </div>
                 </Card>
               </div>
@@ -656,11 +652,7 @@ export default function DashboardPage() {
                     <TableRow>
                       {selectMode && (
                         <TableHead className="w-12">
-                          <Checkbox
-                            checked={isAllSelected}
-                            onCheckedChange={toggleSelectAll}
-                            aria-label="Select all tasks"
-                          />
+                          <Checkbox checked={isAllSelected} onCheckedChange={toggleSelectAll} aria-label="Select all tasks" />
                         </TableHead>
                       )}
                       <TableHead>Date</TableHead>
@@ -685,11 +677,7 @@ export default function DashboardPage() {
                         <TableCell>{safeFormatDate(task.fecha)}</TableCell>
                         <TableCell>{formatDuration(task.horas || 0)}</TableCell>
                         <TableCell>
-                          $
-                          {(task.monto ?? 0).toLocaleString("en-US", {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
+                          ${ (task.monto ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
                         </TableCell>
                         <TableCell className="max-w-xs truncate">{task.descripcion || ""}</TableCell>
                         <TableCell className="text-right">
@@ -710,43 +698,30 @@ export default function DashboardPage() {
                 </Table>
               </div>
 
-              {/* Pagination controls */}
-              {totalPages > 1 &&
-                activeFilter !== "daily" &&
-                activeFilter !== "weekly" &&
-                activeFilter !== "monthly" && (
-                  <div className="mt-4 flex items-center justify-between">
-                    <div className="text-sm text-muted-foreground">
-                      Showing {Math.min((currentPage - 1) * pageSize + 1, totalTasks)} -{" "}
-                      {Math.min(currentPage * pageSize, totalTasks)} of {totalTasks} tasks
-                    </div>
-                    <Pagination>
-                      <PaginationContent>
-                        <PaginationItem>
-                          <PaginationPrevious
-                            onClick={() => handlePageChange(currentPage - 1)}
-                            disabled={currentPage === 1}
-                          />
-                        </PaginationItem>
-
-                        {renderPaginationItems()}
-
-                        <PaginationItem>
-                          <PaginationNext
-                            onClick={() => handlePageChange(currentPage + 1)}
-                            disabled={currentPage === totalPages}
-                          />
-                        </PaginationItem>
-                      </PaginationContent>
-                    </Pagination>
+              {/* Controles de paginación */}
+              {totalPages > 1 && activeFilter !== "daily" && activeFilter !== "weekly" && activeFilter !== "monthly" && (
+                <div className="mt-4 flex items-center justify-between">
+                  <div className="text-sm text-muted-foreground">
+                    Showing {Math.min((currentPage - 1) * pageSize + 1, totalTasks)} - {Math.min(currentPage * pageSize, totalTasks)} of {totalTasks} tasks
                   </div>
-                )}
+                  <Pagination>
+                    <PaginationContent>
+                      <PaginationItem>
+                        <PaginationPrevious onClick={() => handlePageChange(currentPage - 1)} disabled={currentPage === 1} />
+                      </PaginationItem>
+                      {renderPaginationItems()}
+                      <PaginationItem>
+                        <PaginationNext onClick={() => handlePageChange(currentPage + 1)} disabled={currentPage === totalPages} />
+                      </PaginationItem>
+                    </PaginationContent>
+                  </Pagination>
+                </div>
+              )}
             </>
           )}
         </CardContent>
       </Card>
 
-      {/* Confirmation Dialog for Bulk Delete */}
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>

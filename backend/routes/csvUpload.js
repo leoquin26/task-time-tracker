@@ -18,13 +18,13 @@ if (!fs.existsSync(uploadsDir)) {
 
 // Configuración de multer para guardar archivos CSV en el directorio temporal
 const storage = multer.diskStorage({
-  destination: function(req, file, cb) {
+  destination: function (req, file, cb) {
     cb(null, uploadsDir);
   },
-  filename: function(req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
     cb(null, uniqueSuffix + path.extname(file.originalname));
-  }
+  },
 });
 const upload = multer({ storage: storage });
 
@@ -34,13 +34,21 @@ const upload = multer({ storage: storage });
  */
 function parseDuration(durationStr) {
   if (!durationStr || durationStr.trim() === '-') return 0;
-  let hours = 0, minutes = 0, seconds = 0;
+  let hours = 0,
+    minutes = 0,
+    seconds = 0;
   const hourMatch = durationStr.match(/(\d+)\s*h/i);
   const minuteMatch = durationStr.match(/(\d+)\s*m/i);
   const secondMatch = durationStr.match(/(\d+)\s*s/i);
-  if (hourMatch) { hours = parseInt(hourMatch[1], 10); }
-  if (minuteMatch) { minutes = parseInt(minuteMatch[1], 10); }
-  if (secondMatch) { seconds = parseInt(secondMatch[1], 10); }
+  if (hourMatch) {
+    hours = parseInt(hourMatch[1], 10);
+  }
+  if (minuteMatch) {
+    minutes = parseInt(minuteMatch[1], 10);
+  }
+  if (secondMatch) {
+    seconds = parseInt(secondMatch[1], 10);
+  }
   return hours + minutes / 60 + seconds / 3600;
 }
 
@@ -56,37 +64,45 @@ function parsePayout(payoutStr) {
 
 /**
  * POST /api/csv/upload-csv
- * Procesa un CSV y agrega tareas a la BD.
+ * Procesa un CSV y agrega tareas a la base de datos.
  * Se espera recibir el archivo CSV en el campo "file" del form-data.
  */
 router.post('/upload-csv', authMiddleware, upload.single('file'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ message: 'No CSV file provided' });
   }
-  
+
   const filePath = req.file.path;
   const csvData = [];
-  
+
+  // Leer el CSV y acumular todas las filas
   fs.createReadStream(filePath)
     .pipe(csvParser())
     .on('data', (data) => csvData.push(data))
+    .on('error', (error) => {
+      console.error("Error reading CSV file:", error);
+      return res.status(500).json({ message: "Error reading CSV file" });
+    })
     .on('end', async () => {
+      console.log(`CSV rows read: ${csvData.length}`);
       try {
-        // Variables para almacenar tareas y agrupaciones
-        const grouped = {}; // clave compuesta
+        // Variables para almacenar tareas agrupadas y tareas individuales
+        const grouped = {}; // Objeto para agrupar por clave compuesta (itemID + workDate)
         const tasksToInsert = [];
-        
+
+        // Recorrer cada fila del CSV
         for (const row of csvData) {
           // Se espera que el CSV tenga: workDate, itemID, duration, rateApplied, payout, payType, projectName, status
+          // Si faltan campos críticos, se omite la fila
           if (!row.payType || !row.itemID || !row.workDate) continue;
           const payType = row.payType.trim().toLowerCase();
-          
-          // Si es un registro agrupable (prepay, overtimepay, overtime)
+
+          // Si el registro es de tipo agrupable (prepay, overtimepay, overtime)
           if (payType === 'prepay' || payType === 'overtimepay' || payType === 'overtime') {
             // Usamos itemID y la parte de la fecha (en formato ISO sin tiempo) como clave
             const workDateIso = new Date(row.workDate).toISOString().split('T')[0];
             const key = row.itemID.trim() + '-' + workDateIso;
-            
+
             if (!grouped[key]) {
               grouped[key] = {
                 workDate: row.workDate,
@@ -95,10 +111,10 @@ router.post('/upload-csv', authMiddleware, upload.single('file'), async (req, re
                 status: row.status,
                 itemID: row.itemID,
                 prepay: null,
-                overtime: null
+                overtime: null,
               };
             }
-            
+
             if (payType === 'prepay') {
               if (grouped[key].prepay) {
                 grouped[key].prepay.durationSum += parseDuration(row.duration);
@@ -106,22 +122,23 @@ router.post('/upload-csv', authMiddleware, upload.single('file'), async (req, re
               } else {
                 grouped[key].prepay = {
                   durationSum: parseDuration(row.duration),
-                  payoutSum: parsePayout(row.payout)
+                  payoutSum: parsePayout(row.payout),
                 };
               }
-            } else { // para overtime o overtimepay
+            } else {
+              // Para overtime o overtimepay
               if (grouped[key].overtime) {
                 grouped[key].overtime.durationSum += parseDuration(row.duration);
                 grouped[key].overtime.payoutSum += parsePayout(row.payout);
               } else {
                 grouped[key].overtime = {
                   durationSum: parseDuration(row.duration),
-                  payoutSum: parsePayout(row.payout)
+                  payoutSum: parsePayout(row.payout),
                 };
               }
             }
           } else {
-            // Procesar registros individuales (missionReward, hubstaffOperation, payAdjustment, etc.)
+            // Para registros que se procesan individualmente (ej. missionReward, hubstaffOperation, payAdjustment, etc.)
             let task = {
               userId: req.user.id,
               fecha: new Date(row.workDate),
@@ -129,7 +146,7 @@ router.post('/upload-csv', authMiddleware, upload.single('file'), async (req, re
               horas: 0,
               monto: parsePayout(row.payout),
               taskingHours: 0,
-              exceedHours: 0
+              exceedHours: 0,
             };
             if (payType === 'hubstaffoperation') {
               const duration = parseDuration(row.duration);
@@ -139,10 +156,11 @@ router.post('/upload-csv', authMiddleware, upload.single('file'), async (req, re
             tasksToInsert.push(task);
           }
         }
-        
-        // Procesar los grupos acumulados
+
+        // Procesar los registros agrupados
         for (const key in grouped) {
           const group = grouped[key];
+          // Si sólo existe overtime sin prepay, usamos solo overtime
           if (!group.prepay && group.overtime) {
             let task = {
               userId: req.user.id,
@@ -151,9 +169,10 @@ router.post('/upload-csv', authMiddleware, upload.single('file'), async (req, re
               taskingHours: 0,
               exceedHours: group.overtime.durationSum,
               horas: group.overtime.durationSum,
-              monto: group.overtime.payoutSum
+              monto: group.overtime.payoutSum,
             };
             tasksToInsert.push(task);
+            console.log(`Task (solo overtime) - itemID: ${group.itemID}, payout: ${group.overtime.payoutSum}`);
             continue;
           }
           if (!group.prepay) continue;
@@ -167,23 +186,36 @@ router.post('/upload-csv', authMiddleware, upload.single('file'), async (req, re
             taskingHours: prepayDuration,
             exceedHours: overtimeDuration,
             horas: prepayDuration + overtimeDuration,
-            monto: totalPayout
+            monto: totalPayout,
           };
           tasksToInsert.push(task);
+          console.log(
+            `Task processed - itemID: ${group.itemID}, prepay: ${group.prepay.payoutSum}, overtime: ${group.overtime ? group.overtime.payoutSum : 0}, total: ${totalPayout}`
+          );
         }
-        
-        console.log("Tasks to insert:", tasksToInsert);
-        
-        const insertedTasks = await Task.insertMany(tasksToInsert);
+
+        console.log("Total tasks to insert:", tasksToInsert.length);
+
+        // Insertar las tareas en batches para evitar límites en la operación de inserción
+        const batchSize = 500;
+        let totalInserted = 0;
+        for (let i = 0; i < tasksToInsert.length; i += batchSize) {
+          const batch = tasksToInsert.slice(i, i + batchSize);
+          const inserted = await Task.insertMany(batch, { ordered: false });
+          totalInserted += inserted.length;
+        }
+
+        // Eliminar el archivo CSV temporalmente guardado
         fs.unlinkSync(filePath);
-        
-        res.json({ message: 'CSV processed and tasks inserted', count: insertedTasks.length });
+
+        res.json({ message: 'CSV processed and tasks inserted', count: totalInserted });
       } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Error processing CSV data' });
       }
     });
 });
+
 
 /**
  * POST /api/csv/delete-tasks-from-csv

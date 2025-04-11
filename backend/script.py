@@ -15,11 +15,16 @@ def parse_rate(rate_str):
         return 0.0
 
 total_rate = 0.0
-csv_file = './uploads/Outlier_Earnings_Report (3).csv'  # Reemplaza con la ruta real de tu CSV
+item_count = 0  # Contador de items
+csv_file = './uploads/Outlier_Earnings_Report (4).csv'  # Reemplaza con la ruta real de tu CSV
 
 with open(csv_file, newline='', encoding='utf-8') as file:
     reader = csv.DictReader(file)
     for row in reader:
-        total_rate += parse_rate(row['payout'])
+        payout = parse_rate(row['payout'])
+        if payout > 0:  # Solo contamos si el payout es mayor que 0
+            total_rate += payout
+            item_count += 1
 
 print("Total Rate Applied: ${:.2f}".format(total_rate))
+print("Total Items Counted: {}".format(item_count))

@@ -1,4 +1,5 @@
 // routes/tasks.js
+
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
@@ -6,10 +7,12 @@ const moment = require('moment-timezone');
 const Task = require('../models/Task');
 const User = require('../models/User');
 const authMiddleware = require('../middleware/authMiddleware');
+// Función auxiliar que calcula el rango de fechas según el período (daily, weekly, monthly)
+// tomando en cuenta la zona horaria del usuario.
 const { getDateRangeUser } = require('../utils/dateRange');
 
 /* --------------------------------------------------
-   Endpoints Fijos
+   Endpoints Fijos (antes de rutas con parámetros)
 -------------------------------------------------- */
 
 // PUT /api/tasks/adjust-dates - Resta 24 horas a la fecha de todas las tareas (excepto la última)
@@ -21,11 +24,11 @@ router.put('/adjust-dates', authMiddleware, async (req, res) => {
       return res.status(404).json({ message: 'No tasks found' });
     }
     const result = await Task.updateMany(
-      { 
+      {
         userId: new mongoose.Types.ObjectId(req.user.id),
         _id: { $ne: lastTask._id }
       },
-      [{ $set: { fecha: { $subtract: [ "$fecha", 86400000 ] } } }]
+      [{ $set: { fecha: { $subtract: ["$fecha", 86400000] } } }]
     );
     res.json({ message: `Updated ${result.modifiedCount} tasks` });
   } catch (err) {
@@ -72,7 +75,8 @@ router.post('/parse', authMiddleware, async (req, res) => {
     const fullRate = user.hourlyRate;
     const timezone = user.timezone || 'UTC';
 
-    // Si se envía fecha en el body, se interpreta en la zona del usuario; si no se envía, se toma el momento actual.
+    // Interpretar la fecha proporcionada en la zona horaria del usuario;
+    // si no se envía fecha, se toma el momento actual según la zona horaria.
     let localDate;
     if (fecha) {
       localDate = moment.tz(fecha + " 00:00", timezone).toDate();
@@ -80,7 +84,7 @@ router.post('/parse', authMiddleware, async (req, res) => {
       localDate = moment.tz(timezone).toDate();
     }
     
-    // Calcular el monto
+    // Calcular el monto de la tarea
     const monto = Number(((totalTaskingHours * fullRate) + (totalExceedHours * fullRate * 0.3)).toFixed(2));
     
     const newTask = new Task({
@@ -158,16 +162,19 @@ router.get('/filter/monthly', authMiddleware, async (req, res) => {
 
 /* --------------------------------------------------
    Endpoint: Resumen de tareas (/summary)
-   Si se envían parámetros de fecha, se filtra según la zona horaria del usuario.
-   Si no se envían, se resumen TODAS las tareas del usuario.
+   Este endpoint resume TODAS las tareas del usuario (o sólo aquellas dentro
+   de un rango de fechas, si se proporcionan los parámetros startDate y endDate).
+   ¡Ninguna de las métricas (totalTasks, totalHours, totalEarned) se verá afectada por la paginación!
 -------------------------------------------------- */
 router.get('/summary', authMiddleware, async (req, res) => {
   try {
+    // Se ignoran los parámetros de paginación; sólo se usa startDate y endDate (si se proporcionan)
     let match = { userId: new mongoose.Types.ObjectId(req.user.id) };
 
     if (req.query.startDate && req.query.endDate) {
       const user = await User.findById(req.user.id);
       const timezone = user.timezone || 'UTC';
+      // Convertir las fechas de inicio y fin de la zona del usuario a UTC
       const startUtc = moment.tz(req.query.startDate + " 00:00", timezone).utc().toDate();
       const endUtc = moment.tz(req.query.endDate + " 23:59:59.999", timezone).utc().toDate();
       match.fecha = { $gte: startUtc, $lte: endUtc };
@@ -184,6 +191,7 @@ router.get('/summary', authMiddleware, async (req, res) => {
         }
       }
     ]);
+
     if (summary.length > 0) {
       res.json(summary[0]);
     } else {
@@ -199,7 +207,7 @@ router.get('/summary', authMiddleware, async (req, res) => {
    Endpoints Clásicos para Tasks (CRUD)
 -------------------------------------------------- */
 
-// GET /api/tasks (Listado paginado)
+// GET /api/tasks - Listado paginado
 router.get('/', authMiddleware, async (req, res) => {
   try {
     const page = parseInt(req.query.page, 10) || 1;
