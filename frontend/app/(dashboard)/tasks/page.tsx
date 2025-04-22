@@ -41,13 +41,14 @@ import {
 } from "@/components/ui/dropdown-menu"
 import {
   AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
+  AlertDialogTrigger,
   AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
 } from "@/components/ui/alert-dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
@@ -112,7 +113,7 @@ function safeFormatDate(dateStr?: string): string {
 }
 function formatDateToSpanish(date: Date): string {
   const d = new Date(date)
-  d.setMinutes(d.getMinutes() + d.getTimezoneOffset())
+  d.setMinutes(d.getMinutes() + date.getTimezoneOffset())
   return format(d, "dd/MM/yyyy", { locale: es })
 }
 function formatDuration(decimalHours: number): string {
@@ -129,7 +130,7 @@ function formatDuration(decimalHours: number): string {
 
 export default function DashboardPage() {
   const router = useRouter()
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL!
 
   // Tasks state
   const [tasks, setTasks] = useState<Task[]>([])
@@ -152,11 +153,14 @@ export default function DashboardPage() {
   const [pageSize, setPageSize] = useState(20)
   const [totalPages, setTotalPages] = useState(1)
 
+  // Single-delete dialog state
+  const [taskToDelete, setTaskToDelete] = useState<string | null>(null)
+
   // Goals state
   const [goals, setGoals] = useState<GoalWithProgress[]>([])
   const [isLoadingGoals, setIsLoadingGoals] = useState(true)
 
-  // Fetch tasks
+  // Fetch tasks from API
   const fetchTasks = async (filter = "all", page = 1, limit = pageSize) => {
     setIsLoadingTasks(true)
     const token = localStorage.getItem("token")
@@ -190,10 +194,11 @@ export default function DashboardPage() {
       }
       const withSel = list.map(t => ({ ...t, selected: false }))
       setTasks(withSel)
-      setTotalTasks(total); setIsAllSelected(false); setSelectedCount(0)
-      const hrs = list.reduce((a, t) => a + (t.horas || 0), 0)
-      const amt = list.reduce((a, t) => a + (t.monto || 0), 0)
-      setTotalHours(hrs); setTotalAmount(Number(amt.toFixed(2)))
+      setTotalTasks(total)
+      setIsAllSelected(false)
+      setSelectedCount(0)
+      setTotalHours(list.reduce((a, t) => a + (t.horas || 0), 0))
+      setTotalAmount(Number(list.reduce((a, t) => a + (t.monto || 0), 0).toFixed(2)))
     } catch {
       toast.error("Failed to load tasks")
     } finally {
@@ -201,7 +206,7 @@ export default function DashboardPage() {
     }
   }
 
-  // Fetch goals + progress
+  // Fetch goals + progress from API
   const fetchGoals = async () => {
     setIsLoadingGoals(true)
     const token = localStorage.getItem("token")
@@ -242,44 +247,28 @@ export default function DashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Task handlers...
-  const toggleSelectMode = () => {
-    setSelectMode(!selectMode)
-    if (selectMode) {
-      setTasks(tasks.map(t => ({ ...t, selected: false })))
-      setIsAllSelected(false)
-      setSelectedCount(0)
-    }
-  }
-  const deleteTask = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this task?")) return
+  // Delete a single task when confirmed in modal
+  const doDeleteTask = async () => {
+    if (!taskToDelete) return
+    setIsDeletingBulk(true)
     const token = localStorage.getItem("token")
     try {
-      const res = await fetch(`${apiUrl}/api/tasks/${id}`, {
+      const res = await fetch(`${apiUrl}/api/tasks/${taskToDelete}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       })
       if (!res.ok) throw new Error("Failed to delete task")
       toast.success("Task deleted successfully")
+      setTaskToDelete(null)
       fetchTasks(activeFilter, currentPage, pageSize)
     } catch {
       toast.error("Error deleting task")
+    } finally {
+      setIsDeletingBulk(false)
     }
   }
-  const toggleTaskSelection = (id: string) => {
-    const upd = tasks.map(t => t._id === id ? { ...t, selected: !t.selected } : t)
-    setTasks(upd)
-    const sel = upd.filter(t => t.selected).length
-    setSelectedCount(sel)
-    setIsAllSelected(sel === upd.length && upd.length > 0)
-  }
-  const toggleSelectAll = () => {
-    const next = !isAllSelected
-    const upd = tasks.map(t => ({ ...t, selected: next }))
-    setTasks(upd)
-    setIsAllSelected(next)
-    setSelectedCount(next ? upd.length : 0)
-  }
+
+  // Bulk delete selected tasks
   const deleteSelectedTasks = async () => {
     setIsDeletingBulk(true)
     const token = localStorage.getItem("token")
@@ -305,43 +294,92 @@ export default function DashboardPage() {
       setIsDeletingBulk(false)
     }
   }
-  const handleFilterChange = (v: string) => { setActiveFilter(v); setCurrentPage(1); fetchTasks(v, 1, pageSize); setSelectMode(false) }
-  const handlePageChange = (p: number) => { if (p<1||p>totalPages) return; setCurrentPage(p); fetchTasks(activeFilter, p, pageSize) }
-  const handlePageSizeChange = (v: string) => { const n = +v; setPageSize(n); setCurrentPage(1); fetchTasks(activeFilter,1,n) }
+
+  // Handlers for selection, filters, pagination
+  const toggleSelectMode = () => {
+    setSelectMode(!selectMode)
+    if (selectMode) {
+      setTasks(tasks.map(t => ({ ...t, selected: false })))
+      setIsAllSelected(false)
+      setSelectedCount(0)
+    }
+  }
+  const toggleTaskSelection = (id: string) => {
+    const upd = tasks.map(t => t._id === id ? { ...t, selected: !t.selected } : t)
+    setTasks(upd)
+    const sel = upd.filter(t => t.selected).length
+    setSelectedCount(sel)
+    setIsAllSelected(sel === upd.length && upd.length > 0)
+  }
+  const toggleSelectAll = () => {
+    const next = !isAllSelected
+    const upd = tasks.map(t => ({ ...t, selected: next }))
+    setTasks(upd)
+    setIsAllSelected(next)
+    setSelectedCount(next ? upd.length : 0)
+  }
+  const handleFilterChange = (v: string) => {
+    setActiveFilter(v)
+    setCurrentPage(1)
+    fetchTasks(v, 1, pageSize)
+    setSelectMode(false)
+  }
+  const handlePageChange = (p: number) => {
+    if (p < 1 || p > totalPages) return
+    setCurrentPage(p)
+    fetchTasks(activeFilter, p, pageSize)
+  }
+  const handlePageSizeChange = (v: string) => {
+    const n = +v
+    setPageSize(n)
+    setCurrentPage(1)
+    fetchTasks(activeFilter, 1, n)
+  }
   const handleCustomDateFilter = () => {
     if (customStartDate && customEndDate) {
-      setActiveFilter("custom"); setCurrentPage(1)
-      fetchTasks("custom",1,pageSize)
-    } else toast.error("Please select a start and end date")
+      setActiveFilter("custom")
+      setCurrentPage(1)
+      fetchTasks("custom", 1, pageSize)
+    } else {
+      toast.error("Please select a start and end date")
+    }
   }
   const handleSpecificDayFilter = () => {
     if (specificDate) {
-      setActiveFilter("specific-day"); setCurrentPage(1)
-      fetchTasks("specific-day",1,pageSize); setIsCalendarOpen(false)
-    } else toast.error("Please select a date")
+      setActiveFilter("specific-day")
+      setCurrentPage(1)
+      fetchTasks("specific-day", 1, pageSize)
+      setIsCalendarOpen(false)
+    } else {
+      toast.error("Please select a date")
+    }
   }
   const renderPaginationItems = () => {
     const items = []
     const max = 5
     items.push(
       <PaginationItem key="first">
-        <PaginationLink isActive={currentPage===1} onClick={() => handlePageChange(1)}>1</PaginationLink>
+        <PaginationLink isActive={currentPage === 1} onClick={() => handlePageChange(1)}>
+          1
+        </PaginationLink>
       </PaginationItem>
     )
-    const start = Math.max(2, currentPage-Math.floor(max/2))
-    const end = Math.min(totalPages-1, start+max-3)
-    if (start>2) items.push(<PaginationItem key="ell-start"><PaginationEllipsis/></PaginationItem>)
-    for (let i=start;i<=end;i++) {
+    const start = Math.max(2, currentPage - Math.floor(max / 2))
+    const end = Math.min(totalPages - 1, start + max - 3)
+    if (start > 2) items.push(<PaginationItem key="ell-start"><PaginationEllipsis/></PaginationItem>)
+    for (let i = start; i <= end; i++) {
       items.push(
         <PaginationItem key={i}>
-          <PaginationLink isActive={currentPage===i} onClick={()=>handlePageChange(i)}>{i}</PaginationLink>
+          <PaginationLink isActive={currentPage === i} onClick={() => handlePageChange(i)}>
+            {i}
+          </PaginationLink>
         </PaginationItem>
       )
     }
-    if (end<totalPages-1) items.push(<PaginationItem key="ell-end"><PaginationEllipsis/></PaginationItem>)
-    if (totalPages>1) items.push(
+    if (end < totalPages - 1) items.push(<PaginationItem key="ell-end"><PaginationEllipsis/></PaginationItem>)
+    if (totalPages > 1) items.push(
       <PaginationItem key="last">
-        <PaginationLink isActive={currentPage===totalPages} onClick={()=>handlePageChange(totalPages)}>
+        <PaginationLink isActive={currentPage === totalPages} onClick={() => handlePageChange(totalPages)}>
           {totalPages}
         </PaginationLink>
       </PaginationItem>
@@ -350,19 +388,19 @@ export default function DashboardPage() {
   }
 
   const filteredTasks = tasks.filter(t =>
-    (t.descripcion||"").toLowerCase().includes(searchTerm.toLowerCase())
+    (t.descripcion || "").toLowerCase().includes(searchTerm.toLowerCase())
   )
   const getFilterLabel = () => {
-    switch(activeFilter) {
+    switch (activeFilter) {
       case "daily": return "Today"
       case "weekly": return "This Week"
       case "monthly": return "This Month"
       case "custom":
-        return customStartDate&&customEndDate
-          ? `${format(customStartDate,"dd 'de' MMMM 'de' yyyy",{locale:es})} – ${format(customEndDate,"dd 'de' MMMM 'de' yyyy",{locale:es})}`
+        return customStartDate && customEndDate
+          ? `${format(customStartDate, "dd 'de' MMMM 'de' yyyy", { locale: es })} – ${format(customEndDate, "dd 'de' MMMM 'de' yyyy", { locale: es })}`
           : "Custom Period"
       case "specific-day":
-        return specificDate?formatDateToSpanish(specificDate):"Specific Day"
+        return specificDate ? formatDateToSpanish(specificDate) : "Specific Day"
       default: return "All Tasks"
     }
   }
@@ -378,7 +416,7 @@ export default function DashboardPage() {
         <div className="flex gap-2">
           {selectMode ? (
             <>
-              <Button variant="destructive" disabled={selectedCount===0} onClick={()=>setIsDeleteDialogOpen(true)}>
+              <Button variant="destructive" disabled={selectedCount === 0} onClick={() => setIsDeleteDialogOpen(true)}>
                 <Trash2 className="mr-2 h-4 w-4"/> Delete Selected ({selectedCount})
               </Button>
               <Button variant="outline" onClick={toggleSelectMode}>Cancel</Button>
@@ -388,10 +426,10 @@ export default function DashboardPage() {
               <Button variant="outline" onClick={toggleSelectMode}>
                 <CheckSquare className="mr-2 h-4 w-4"/> Select
               </Button>
-              <Button variant="outline" onClick={()=>router.push("/tasks/upload-csv")}>
+              <Button variant="outline" onClick={() => router.push("/tasks/upload-csv")}>
                 <Upload className="mr-2 h-4 w-4"/> Upload CSV
               </Button>
-              <Button onClick={()=>router.push("/tasks/new")}>
+              <Button onClick={() => router.push("/tasks/new")}>
                 <Plus className="mr-2 h-4 w-4"/> Add Task
               </Button>
             </>
@@ -406,16 +444,20 @@ export default function DashboardPage() {
         </div>
         {isLoadingGoals ? (
           <p>Loading goals…</p>
-        ) : goals.length===0 ? (
+        ) : goals.length === 0 ? (
           <p>No goals yet.</p>
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
-            {goals.map(g=>(
-              <Card key={g._id} className="cursor-pointer hover:shadow-lg transition-shadow" onClick={()=>router.push(`/goals/${g._id}`)}>
+            {goals.map(g => (
+              <Card
+                key={g._id}
+                className="cursor-pointer hover:shadow-lg transition-shadow"
+                onClick={() => router.push(`/goals/${g._id}`)}
+              >
                 <CardContent className="space-y-2">
                   <h3 className="text-lg font-medium">{g.title}</h3>
                   <p className="text-sm text-muted-foreground">
-                    {format(new Date(g.startDate),"dd/MM/yyyy")} – {format(new Date(g.endDate),"dd/MM/yyyy")}
+                    {safeFormatDate(g.startDate)} – {safeFormatDate(g.endDate)}
                   </p>
                   <div className="flex justify-between text-sm">
                     <span>${g.progress.achieved.toFixed(2)}</span>
@@ -432,6 +474,28 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Single-delete Dialog */}
+      <AlertDialog open={!!taskToDelete} onOpenChange={(o) => !o && setTaskToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Task</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this task? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeletingBulk}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={isDeletingBulk}
+              onClick={doDeleteTask}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Tasks Card */}
       <Card>
@@ -480,7 +544,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Custom filter panel */}
-          {activeFilter==="custom" && (
+          {activeFilter === "custom" && (
             <div className="flex flex-col md:flex-row md:items-end gap-4 mb-4 p-4 border rounded-md bg-muted/20">
               <div className="flex-1 space-y-2">
                 <label className="text-sm font-medium">Start Date</label>
@@ -488,11 +552,18 @@ export default function DashboardPage() {
                   <PopoverTrigger asChild>
                     <Button variant="outline" className="w-full justify-start text-left font-normal">
                       <CalendarDays className="mr-2 h-4 w-4"/>
-                      {customStartDate?format(customStartDate,"dd 'de' MMMM 'de' yyyy",{locale:es}):"Select date"}
+                      {customStartDate
+                        ? format(customStartDate, "dd 'de' MMMM 'de' yyyy", { locale: es })
+                        : "Select date"}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
-                    <CalendarComponent mode="single" selected={customStartDate} onSelect={setCustomStartDate} initialFocus/>
+                    <CalendarComponent
+                      mode="single"
+                      selected={customStartDate}
+                      onSelect={setCustomStartDate}
+                      initialFocus
+                    />
                   </PopoverContent>
                 </Popover>
               </div>
@@ -502,11 +573,18 @@ export default function DashboardPage() {
                   <PopoverTrigger asChild>
                     <Button variant="outline" className="w-full justify-start text-left font-normal">
                       <CalendarDays className="mr-2 h-4 w-4"/>
-                      {customEndDate?format(customEndDate,"dd 'de' MMMM 'de' yyyy",{locale:es}):"Select date"}
+                      {customEndDate
+                        ? format(customEndDate, "dd 'de' MMMM 'de' yyyy", { locale: es })
+                        : "Select date"}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
-                    <CalendarComponent mode="single" selected={customEndDate} onSelect={setCustomEndDate} initialFocus/>
+                    <CalendarComponent
+                      mode="single"
+                      selected={customEndDate}
+                      onSelect={setCustomEndDate}
+                      initialFocus
+                    />
                   </PopoverContent>
                 </Popover>
               </div>
@@ -517,7 +595,7 @@ export default function DashboardPage() {
           )}
 
           {/* Specific day filter */}
-          {activeFilter==="specific-day" && (
+          {activeFilter === "specific-day" && (
             <div className="flex flex-col md:flex-row md:items-end gap-4 mb-4 p-4 border rounded-md bg-muted/20">
               <div className="flex-1 space-y-2">
                 <label className="text-sm font-medium">Select Day</label>
@@ -525,11 +603,16 @@ export default function DashboardPage() {
                   <PopoverTrigger asChild>
                     <Button variant="outline" className="w-full justify-start text-left font-normal">
                       <CalendarDays className="mr-2 h-4 w-4"/>
-                      {specificDate?formatDateToSpanish(specificDate):"Select date"}
+                      {specificDate ? formatDateToSpanish(specificDate) : "Select date"}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
-                    <CalendarComponent mode="single" selected={specificDate} onSelect={setSpecificDate} initialFocus/>
+                    <CalendarComponent
+                      mode="single"
+                      selected={specificDate}
+                      onSelect={setSpecificDate}
+                      initialFocus
+                    />
                   </PopoverContent>
                 </Popover>
               </div>
@@ -542,7 +625,7 @@ export default function DashboardPage() {
           {/* Title + page size */}
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold">{getFilterLabel()}</h2>
-            {activeFilter!=="daily" && activeFilter!=="weekly" && activeFilter!=="monthly" && (
+            {activeFilter !== "daily" && activeFilter !== "weekly" && activeFilter !== "monthly" && (
               <div className="flex items-center gap-2">
                 <span className="text-sm text-muted-foreground">Show:</span>
                 <Select value={pageSize.toString()} onValueChange={handlePageSizeChange}>
@@ -562,10 +645,10 @@ export default function DashboardPage() {
             <div className="flex justify-center py-8">
               <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
             </div>
-          ) : filteredTasks.length===0 ? (
+          ) : filteredTasks.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
               <p className="text-muted-foreground">No tasks found for {getFilterLabel()}</p>
-              <Button variant="outline" className="mt-4" onClick={()=>router.push("/tasks/new")}>
+              <Button variant="outline" className="mt-4" onClick={() => router.push("/tasks/new")}>
                 <Plus className="mr-2 h-4 w-4"/> Add your first task
               </Button>
             </div>
@@ -595,15 +678,15 @@ export default function DashboardPage() {
                   <TableHeader>
                     <TableRow>
                       {selectMode && (
-                        <TableHead className="w-12">
-                          <Checkbox checked={isAllSelected} onCheckedChange={toggleSelectAll} aria-label="Select all tasks"/>
-                        </TableHead>
+                        <TableCell className="w-12">
+                          <Checkbox checked={isAllSelected} onCheckedChange={toggleSelectAll} aria-label="Select all tasks"/> 
+                        </TableCell>
                       )}
-                      <TableHead>Date</TableHead>
-                      <TableHead>Duration</TableHead>
-                      <TableHead>Amount</TableHead>
-                      <TableHead>Description</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                      <TableCell>Date</TableCell>
+                      <TableCell>Duration</TableCell>
+                      <TableCell>Amount</TableCell>
+                      <TableCell>Description</TableCell>
+                      <TableCell className="text-right">Actions</TableCell>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -613,7 +696,7 @@ export default function DashboardPage() {
                           <TableCell className="w-12">
                             <Checkbox
                               checked={task.selected}
-                              onCheckedChange={()=>toggleTaskSelection(task._id)}
+                              onCheckedChange={() => toggleTaskSelection(task._id)}
                               aria-label={`Select task ${task.descripcion||""}`}
                             />
                           </TableCell>
@@ -629,9 +712,13 @@ export default function DashboardPage() {
                             <Button variant="ghost" size="icon" onClick={()=>router.push(`/tasks/edit/${task._id}`)}>
                               <Pencil className="h-4 w-4"/><span className="sr-only">Edit</span>
                             </Button>
-                            <Button variant="ghost" size="icon" onClick={()=>deleteTask(task._id)}>
-                              <Trash2 className="h-4 w-4"/><span className="sr-only">Delete</span>
-                            </Button>
+                            <AlertDialog onOpenChange={(open) => { if (open) setTaskToDelete(task._id) }}>
+                              <AlertDialogTrigger asChild>
+                                <Button variant="ghost" size="icon">
+                                  <Trash2 className="h-4 w-4"/><span className="sr-only">Delete</span>
+                                </Button>
+                              </AlertDialogTrigger>
+                            </AlertDialog>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -641,19 +728,19 @@ export default function DashboardPage() {
               </div>
 
               {/* Pagination */}
-              {totalPages>1 && activeFilter!=="daily" && activeFilter!=="weekly" && activeFilter!=="monthly" && (
+              {totalPages > 1 && activeFilter !== "daily" && activeFilter !== "weekly" && activeFilter !== "monthly" && (
                 <div className="mt-4 flex items-center justify-between">
                   <div className="text-sm text-muted-foreground">
-                    Showing {Math.min((currentPage-1)*pageSize+1,totalTasks)} - {Math.min(currentPage*pageSize,totalTasks)} of {totalTasks} tasks
+                    Showing {Math.min((currentPage - 1) * pageSize + 1, totalTasks)} - {Math.min(currentPage * pageSize, totalTasks)} of {totalTasks} tasks
                   </div>
                   <Pagination>
                     <PaginationContent>
                       <PaginationItem>
-                        <PaginationPrevious onClick={()=>handlePageChange(currentPage-1)} disabled={currentPage===1}/>
+                        <PaginationNext onClick={() => handlePageChange(currentPage - 1)} disabled={currentPage === 1} />
                       </PaginationItem>
                       {renderPaginationItems()}
                       <PaginationItem>
-                        <PaginationNext onClick={()=>handlePageChange(currentPage+1)} disabled={currentPage===totalPages}/>
+                        <PaginationPrevious onClick={() => handlePageChange(currentPage + 1)} disabled={currentPage === totalPages} />
                       </PaginationItem>
                     </PaginationContent>
                   </Pagination>
@@ -672,14 +759,13 @@ export default function DashboardPage() {
             <AlertDialogDescription>
               Are you sure you want to delete {selectedCount} selected tasks?
             </AlertDialogDescription>
-            <AlertDialogDescription className="mt-2">This action cannot be undone.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isDeletingBulk}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               disabled={isDeletingBulk}
-              onClick={(e)=>{ e.preventDefault(); deleteSelectedTasks() }}
+              onClick={deleteSelectedTasks}
             >
               {isDeletingBulk ? "Deleting..." : "Delete Tasks"}
             </AlertDialogAction>

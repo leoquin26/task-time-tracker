@@ -28,10 +28,18 @@ export default function EditGoalPage() {
       })
       if (!res.ok) throw new Error("Failed to load goal")
       const g = await res.json()
+
+      // Ajustar fechas para compensar el offset antes de formatear
+      const sd = new Date(g.startDate)
+      sd.setMinutes(sd.getMinutes() + sd.getTimezoneOffset())
+      setStartDate(formatISO(sd, { representation: "date" }))
+
+      const ed = new Date(g.endDate)
+      ed.setMinutes(ed.getMinutes() + ed.getTimezoneOffset())
+      setEndDate(formatISO(ed, { representation: "date" }))
+
       setTitle(g.title)
       setTargetAmount(g.targetAmount)
-      setStartDate(formatISO(new Date(g.startDate), { representation: "date" }))
-      setEndDate(formatISO(new Date(g.endDate), { representation: "date" }))
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error")
     } finally {

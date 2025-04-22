@@ -2,13 +2,34 @@
 
 import { useEffect, useState } from "react"
 import { useRouter, useParams } from "next/navigation"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
-import { AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog"
+import {
+  AlertDialog,
+  AlertDialogTrigger,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from "@/components/ui/alert-dialog"
 import { format } from "date-fns"
 import { useToast } from "@/hooks/use-toast"
-import { Plus } from "lucide-react"
+
+// Ajusta un ISO-8601 al inicio de ese día en tu zona local
+function parseLocalDate(dateStr: string): Date {
+  const d = new Date(dateStr)
+  d.setMinutes(d.getMinutes() + d.getTimezoneOffset())
+  return d
+}
 
 interface GoalDetail {
   _id: string
@@ -30,30 +51,30 @@ export default function GoalDetailPage() {
   const { id } = useParams()
   const router = useRouter()
   const { toast } = useToast()
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL!
   const [goal, setGoal] = useState<GoalDetail | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [open, setOpen] = useState(false)
 
-  const fetchGoal = async () => {
+  async function fetchGoal() {
     setIsLoading(true)
-    const token = localStorage.getItem("token")
     try {
+      const token = localStorage.getItem("token")
       const res = await fetch(`${apiUrl}/api/goals/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       if (!res.ok) throw new Error("Failed to load goal")
       setGoal(await res.json())
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Error loading goal")
+      toast.error((err as Error).message || "Error loading goal")
     } finally {
       setIsLoading(false)
     }
   }
 
-  const deleteGoal = async () => {
-    const token = localStorage.getItem("token")
+  async function deleteGoal() {
     try {
+      const token = localStorage.getItem("token")
       const res = await fetch(`${apiUrl}/api/goals/${id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
@@ -62,7 +83,7 @@ export default function GoalDetailPage() {
       toast.success("Goal deleted")
       router.push("/goals")
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Error deleting goal")
+      toast.error((err as Error).message || "Error deleting goal")
     }
   }
 
@@ -98,7 +119,7 @@ export default function GoalDetailPage() {
               <AlertDialogHeader>
                 <AlertDialogTitle>Delete Goal</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Are you sure you want to delete this goal? This action cannot be undone.
+                  This action cannot be undone.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -114,6 +135,7 @@ export default function GoalDetailPage() {
           </AlertDialog>
         </div>
       </div>
+
       <Card>
         <CardHeader>
           <CardTitle>Progress</CardTitle>
@@ -126,8 +148,8 @@ export default function GoalDetailPage() {
           <Progress value={percentNum} />
           <div className="text-xs text-muted-foreground">{percentNum}%</div>
           <p className="text-sm">
-            {format(new Date(startDate), "dd/MM/yyyy")} –{" "}
-            {format(new Date(endDate), "dd/MM/yyyy")}
+            {format(parseLocalDate(startDate), "dd/MM/yyyy")} –{" "}
+            {format(parseLocalDate(endDate), "dd/MM/yyyy")}
           </p>
           <p className="text-sm">
             {daysRemaining} days remaining • ~${dailyTarget.toFixed(2)} per day
