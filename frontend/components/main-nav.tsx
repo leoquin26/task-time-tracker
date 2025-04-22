@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { Clock, LayoutDashboard, ListTodo, Settings, LogOut, Menu, X } from 'lucide-react'
+import { Clock, LayoutDashboard, ListTodo, Target, Settings, LogOut, Menu, X } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { useRouter } from "next/navigation"
 import { ThemeToggle } from "@/components/theme-toggle"
@@ -20,33 +20,25 @@ export function MainNav() {
     router.push("/login")
   }
 
-  // Close menu when clicking outside
+  // Close menu when clicking outside or pressing Escape
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+    function onClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setIsMenuOpen(false)
       }
     }
-
-    // Close menu when pressing escape key
-    function handleEscapeKey(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setIsMenuOpen(false)
-      }
+    function onEscape(e: KeyboardEvent) {
+      if (e.key === "Escape") setIsMenuOpen(false)
     }
-
-    // Add event listeners
-    document.addEventListener("mousedown", handleClickOutside)
-    document.addEventListener("keydown", handleEscapeKey)
-
-    // Clean up event listeners
+    document.addEventListener("mousedown", onClickOutside)
+    document.addEventListener("keydown", onEscape)
     return () => {
-      document.removeEventListener("mousedown", handleClickOutside)
-      document.removeEventListener("keydown", handleEscapeKey)
+      document.removeEventListener("mousedown", onClickOutside)
+      document.removeEventListener("keydown", onEscape)
     }
   }, [])
 
-  // Close menu when route changes
+  // Close mobile menu on route change
   useEffect(() => {
     setIsMenuOpen(false)
   }, [pathname])
@@ -65,6 +57,12 @@ export function MainNav() {
       active: pathname?.startsWith("/tasks"),
     },
     {
+      href: "/goals",
+      label: "Goals",
+      icon: <Target className="h-4 w-4" />,
+      active: pathname?.startsWith("/goals"),
+    },
+    {
       href: "/profile",
       label: "Profile",
       icon: <Settings className="h-4 w-4" />,
@@ -80,7 +78,7 @@ export function MainNav() {
           <span className="font-bold">TimeTracker</span>
         </Link>
 
-        {/* Desktop Navigation - Main Links */}
+        {/* Desktop Navigation */}
         <nav className="hidden md:flex items-center space-x-6 text-sm font-medium">
           {navItems.map((item) => (
             <Link
@@ -88,7 +86,7 @@ export function MainNav() {
               href={item.href}
               className={cn(
                 "transition-colors hover:text-foreground/80",
-                item.active ? "text-foreground" : "text-foreground/60",
+                item.active ? "text-foreground" : "text-foreground/60"
               )}
             >
               <div className="flex items-center gap-1">
@@ -100,9 +98,8 @@ export function MainNav() {
         </nav>
       </div>
 
-      {/* Right side actions - Theme Toggle and Logout */}
+      {/* Actions */}
       <div className="flex items-center gap-4">
-        {/* Desktop Logout Button */}
         <Button
           variant="ghost"
           size="sm"
@@ -112,17 +109,22 @@ export function MainNav() {
           <LogOut className="h-4 w-4" />
           <span>Logout</span>
         </Button>
-        
+
         <ThemeToggle />
 
-        {/* Mobile Menu Button */}
-        <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setIsMenuOpen(!isMenuOpen)}>
+        {/* Mobile menu button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="md:hidden"
+          onClick={() => setIsMenuOpen((open) => !open)}
+        >
           {isMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           <span className="sr-only">Toggle menu</span>
         </Button>
       </div>
 
-      {/* Mobile Menu Overlay */}
+      {/* Mobile backdrop */}
       {isMenuOpen && (
         <div
           className="fixed inset-0 bg-background/80 backdrop-blur-sm z-40 md:hidden"
@@ -130,12 +132,12 @@ export function MainNav() {
         />
       )}
 
-      {/* Mobile Menu Panel */}
+      {/* Mobile panel */}
       <div
         ref={menuRef}
         className={cn(
           "fixed top-0 right-0 bottom-0 z-50 w-[240px] bg-background shadow-lg border-l border-border p-6 transition-transform duration-200 ease-in-out md:hidden",
-          isMenuOpen ? "translate-x-0" : "translate-x-full",
+          isMenuOpen ? "translate-x-0" : "translate-x-full"
         )}
       >
         <div className="flex flex-col h-full">
@@ -156,7 +158,9 @@ export function MainNav() {
                 onClick={() => setIsMenuOpen(false)}
                 className={cn(
                   "flex items-center gap-2 px-2 py-1.5 rounded-md transition-colors",
-                  item.active ? "bg-accent text-accent-foreground" : "hover:bg-accent/50 hover:text-accent-foreground",
+                  item.active
+                    ? "bg-accent text-accent-foreground"
+                    : "hover:bg-accent/50 hover:text-accent-foreground"
                 )}
               >
                 {item.icon}
