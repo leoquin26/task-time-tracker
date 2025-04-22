@@ -6,10 +6,10 @@ const Goal = require('../models/Goal');
 const Task = require('../models/Task');
 const User = require('../models/User');
 const auth = require('../middleware/authMiddleware');
+const { getDateRangeUser } = require('../utils/dateRange');
 
 /**
  * POST /api/goals
- * Crear un nuevo goal
  */
 router.post('/', auth, async (req, res) => {
   try {
@@ -34,7 +34,6 @@ router.post('/', auth, async (req, res) => {
 
 /**
  * GET /api/goals
- * Listar todos los goals del usuario
  */
 router.get('/', auth, async (req, res) => {
   try {
@@ -48,31 +47,31 @@ router.get('/', auth, async (req, res) => {
 
 /**
  * GET /api/goals/:id
- * Detalle de un goal con progreso (sólo tareas dentro de startDate–endDate)
+ * Detalle con progreso usando la misma lógica de filtrado que daily
  */
 router.get('/:id', auth, async (req, res) => {
   try {
-    // Obtener el goal
+    // 1. Obtener goal
     const goal = await Goal.findOne({ _id: req.params.id, userId: req.user.id });
     if (!goal) return res.status(404).json({ message: 'Goal not found' });
 
-    // Zona horaria del usuario
+    // 2. Zona horaria del usuario y límites en local
     const user = await User.findById(req.user.id);
     const tz = user.timezone || 'UTC';
 
-    // Calcular límites locales y convertir a UTC (igual que en filter/daily)
-    const startUtc = moment.tz(goal.startDate, tz).startOf('day').utc().toDate();
-    const endUtc   = moment.tz(goal.endDate,   tz).endOf('day').utc().toDate();
+    // Igual que getDateRangeUser, pero con fechas custom:
+    const start = moment.tz(goal.startDate, tz).startOf('day').toDate();
+    const end   = moment.tz(goal.endDate,   tz).endOf('day').toDate();
 
-    // Traer sólo las tareas cuya fecha UTC caiga entre esos límites
+    // 3. Traer tareas exactamente entre esos límites
     const tasks = await Task.find({
       userId: req.user.id,
-      fecha: { $gte: startUtc, $lte: endUtc }
-    });
+      fecha: { $gte: start, $lte: end }
+    }).sort({ fecha: -1 });
 
-    // Calcular métricas
+    // 4. Calcular métricas
     const achieved = tasks.reduce((sum, t) => sum + (t.monto || 0), 0);
-    const days = moment(endUtc).diff(moment(startUtc), 'days') + 1;
+    const days = moment(goal.endDate).diff(moment(goal.startDate), 'days') + 1;
     const dailyTarget = goal.targetAmount / days;
     const rate = user.hourlyRate || 0;
     const hoursPerDay = rate > 0 ? dailyTarget / rate : 0;
@@ -96,7 +95,6 @@ router.get('/:id', auth, async (req, res) => {
 
 /**
  * PUT /api/goals/:id
- * Actualizar un goal
  */
 router.put('/:id', auth, async (req, res) => {
   try {
@@ -116,7 +114,6 @@ router.put('/:id', auth, async (req, res) => {
 
 /**
  * DELETE /api/goals/:id
- * Eliminar un goal
  */
 router.delete('/:id', auth, async (req, res) => {
   try {
