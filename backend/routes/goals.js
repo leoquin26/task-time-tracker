@@ -6,10 +6,10 @@ const Goal = require('../models/Goal');
 const Task = require('../models/Task');
 const User = require('../models/User');
 const auth = require('../middleware/authMiddleware');
-const { getDateRangeUser } = require('../utils/dateRange');
 
 /**
  * POST /api/goals
+ * Crear un nuevo goal
  */
 router.post('/', auth, async (req, res) => {
   try {
@@ -17,12 +17,20 @@ router.post('/', auth, async (req, res) => {
     if (!title || !targetAmount || !startDate || !endDate) {
       return res.status(400).json({ message: 'Missing required fields' });
     }
+    // Obtener zona horaria del usuario
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    const tz = user.timezone || 'UTC';
+    // Ajustar al inicio y fin del día en TZ
+    const start = moment.tz(startDate, tz).startOf('day').toDate();
+    const end   = moment.tz(endDate,   tz).endOf('day').toDate();
+
     const goal = new Goal({
       userId: req.user.id,
       title,
       targetAmount,
-      startDate: new Date(startDate),
-      endDate: new Date(endDate),
+      startDate: start,
+      endDate: end
     });
     await goal.save();
     res.status(201).json(goal);
@@ -34,6 +42,7 @@ router.post('/', auth, async (req, res) => {
 
 /**
  * GET /api/goals
+ * Listar todos los goals del usuario
  */
 router.get('/', auth, async (req, res) => {
   try {
@@ -47,31 +56,35 @@ router.get('/', auth, async (req, res) => {
 
 /**
  * GET /api/goals/:id
- * Detalle con progreso usando la misma lógica de filtrado que daily
+ * Detalle de un goal con su progreso
  */
 router.get('/:id', auth, async (req, res) => {
   try {
-    // 1. Obtener goal
+    // 1. Obtener el goal
     const goal = await Goal.findOne({ _id: req.params.id, userId: req.user.id });
     if (!goal) return res.status(404).json({ message: 'Goal not found' });
 
-    // 2. Zona horaria del usuario y límites en local
+    // 2. Zona horaria del usuario
     const user = await User.findById(req.user.id);
     const tz = user.timezone || 'UTC';
 
-    // Igual que getDateRangeUser, pero con fechas custom:
-    const start = moment.tz(goal.startDate, tz).startOf('day').toDate();
-    const end   = moment.tz(goal.endDate,   tz).endOf('day').toDate();
+    // 3. Tomar fechas ya ajustadas a start/end of day
+    const startLocal = moment.tz(goal.startDate, tz).startOf('day');
+    const endLocal   = moment.tz(goal.endDate,   tz).endOf('day');
 
-    // 3. Traer tareas exactamente entre esos límites
+    // 4. Convertir a UTC para la consulta
+    const startUtc = startLocal.utc().toDate();
+    const endUtc   = endLocal  .utc().toDate();
+
+    // 5. Traer tareas en ese rango
     const tasks = await Task.find({
       userId: req.user.id,
-      fecha: { $gte: start, $lte: end }
-    }).sort({ fecha: -1 });
+      fecha: { $gte: startUtc, $lte: endUtc }
+    });
 
-    // 4. Calcular métricas
+    // 6. Calcular métricas
     const achieved = tasks.reduce((sum, t) => sum + (t.monto || 0), 0);
-    const days = moment(goal.endDate).diff(moment(goal.startDate), 'days') + 1;
+    const days = endLocal.diff(startLocal, 'days') + 1;
     const dailyTarget = goal.targetAmount / days;
     const rate = user.hourlyRate || 0;
     const hoursPerDay = rate > 0 ? dailyTarget / rate : 0;
@@ -79,12 +92,12 @@ router.get('/:id', auth, async (req, res) => {
     res.json({
       ...goal.toObject(),
       progress: {
-        achieved: Number(achieved.toFixed(2)),
-        remaining: Number(Math.max(goal.targetAmount - achieved, 0).toFixed(2)),
-        percent: Number(Math.min((achieved / goal.targetAmount) * 100, 100).toFixed(2)),
+        achieved:       Number(achieved.toFixed(2)),
+        remaining:      Number(Math.max(goal.targetAmount - achieved, 0).toFixed(2)),
+        percent:        Number(Math.min((achieved / goal.targetAmount) * 100, 100).toFixed(2)),
         days,
-        dailyTarget: Number(dailyTarget.toFixed(2)),
-        hoursPerDay: Number(hoursPerDay.toFixed(2)),
+        dailyTarget:    Number(dailyTarget.toFixed(2)),
+        hoursPerDay:    Number(hoursPerDay.toFixed(2))
       }
     });
   } catch (err) {
@@ -95,13 +108,20 @@ router.get('/:id', auth, async (req, res) => {
 
 /**
  * PUT /api/goals/:id
+ * Actualizar un goal
  */
 router.put('/:id', auth, async (req, res) => {
   try {
     const { title, targetAmount, startDate, endDate } = req.body;
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    const tz = user.timezone || 'UTC';
+    const start = moment.tz(startDate, tz).startOf('day').toDate();
+    const end   = moment.tz(endDate,   tz).endOf('day').toDate();
+
     const goal = await Goal.findOneAndUpdate(
       { _id: req.params.id, userId: req.user.id },
-      { title, targetAmount, startDate: new Date(startDate), endDate: new Date(endDate) },
+      { title, targetAmount, startDate: start, endDate: end },
       { new: true }
     );
     if (!goal) return res.status(404).json({ message: 'Goal not found' });
@@ -114,6 +134,7 @@ router.put('/:id', auth, async (req, res) => {
 
 /**
  * DELETE /api/goals/:id
+ * Eliminar un goal
  */
 router.delete('/:id', auth, async (req, res) => {
   try {
