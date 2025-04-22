@@ -51,6 +51,7 @@ router.get('/', auth, async (req, res) => {
  * Obtener un goal con su progreso (hasta hoy si está en curso)
  */
 // GET /api/goals/:id — Detalle de un goal con progreso
+// GET /api/goals/:id — Detalle de un goal con progreso
 router.get('/:id', auth, async (req, res) => {
     try {
       // 1. Obtener el goal
@@ -59,21 +60,23 @@ router.get('/:id', auth, async (req, res) => {
   
       // 2. Obtener zona horaria del usuario
       const user = await User.findById(req.user.id)
-      const timezone = user.timezone || 'UTC'
+      const tz = user.timezone || 'UTC'
   
-      // 3. Calcular inicio y fin en hora local del usuario y convertir a UTC
-      const startLocal = moment.tz(goal.startDate, timezone).startOf('day')
-      const endLocal   = moment.tz(goal.endDate,   timezone).endOf('day')
-      const startUtc   = startLocal.utc().toDate()
-      const endUtc     = endLocal.utc().toDate()
+      // 3. Parsear sólo la parte 'YYYY-MM-DD' en TZ para start/end
+      const startLocal = moment.tz(goal.startDate.slice(0, 10), 'YYYY-MM-DD', tz).startOf('day')
+      const endLocal   = moment.tz(goal.endDate  .slice(0, 10), 'YYYY-MM-DD', tz).endOf('day')
   
-      // 4. Traer tareas dentro de ese rango UTC
+      // 4. Convertir a UTC para la query
+      const startUtc = startLocal.utc().toDate()
+      const endUtc   = endLocal  .utc().toDate()
+  
+      // 5. Traer tareas en ese rango
       const tasks = await Task.find({
         userId: req.user.id,
         fecha: { $gte: startUtc, $lte: endUtc }
       })
   
-      // 5. Agregar métricas
+      // 6. Calcular métricas
       const achieved = tasks.reduce((sum, t) => sum + (t.monto || 0), 0)
       const days = endLocal.diff(startLocal, 'days') + 1
       const dailyTarget = goal.targetAmount / days
@@ -85,7 +88,7 @@ router.get('/:id', auth, async (req, res) => {
         progress: {
           achieved: Number(achieved.toFixed(2)),
           remaining: Number(Math.max(goal.targetAmount - achieved, 0).toFixed(2)),
-          percent: Math.min(((achieved / goal.targetAmount) * 100).toFixed(2), 100),
+          percent: Number(Math.min((achieved / goal.targetAmount) * 100, 100).toFixed(2)),
           days,
           dailyTarget: Number(dailyTarget.toFixed(2)),
           hoursPerDay: Number(hoursPerDay.toFixed(2))
