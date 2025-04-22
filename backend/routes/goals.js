@@ -52,29 +52,25 @@ router.get('/', auth, async (req, res) => {
  */
 router.get('/:id', auth, async (req, res) => {
   try {
-    // 1. Obtener el goal
+    // Obtener el goal
     const goal = await Goal.findOne({ _id: req.params.id, userId: req.user.id });
     if (!goal) return res.status(404).json({ message: 'Goal not found' });
 
-    // 2. Zona horaria del usuario
+    // Zona horaria del usuario
     const user = await User.findById(req.user.id);
     const tz = user.timezone || 'UTC';
 
-    // 3. Formatear la fecha UTC almacenada a YYYY-MM-DD en la zona local
-    const startLocalStr = moment(goal.startDate).tz(tz).format('YYYY-MM-DD');
-    const endLocalStr   = moment(goal.endDate).tz(tz).format('YYYY-MM-DD');
+    // Calcular límites locales y convertir a UTC (igual que en filter/daily)
+    const startUtc = moment.tz(goal.startDate, tz).startOf('day').utc().toDate();
+    const endUtc   = moment.tz(goal.endDate,   tz).endOf('day').utc().toDate();
 
-    // 4. Reconstruir día completo en local y convertir a UTC
-    const startUtc = moment.tz(startLocalStr + ' 00:00', 'YYYY-MM-DD HH:mm', tz).utc().toDate();
-    const endUtc   = moment.tz(endLocalStr   + ' 23:59:59.999', 'YYYY-MM-DD HH:mm:ss.SSS', tz).utc().toDate();
-
-    // 5. Consultar tareas dentro de esos límites UTC
+    // Traer sólo las tareas cuya fecha UTC caiga entre esos límites
     const tasks = await Task.find({
       userId: req.user.id,
       fecha: { $gte: startUtc, $lte: endUtc }
     });
 
-    // 6. Calcular métricas de progreso
+    // Calcular métricas
     const achieved = tasks.reduce((sum, t) => sum + (t.monto || 0), 0);
     const days = moment(endUtc).diff(moment(startUtc), 'days') + 1;
     const dailyTarget = goal.targetAmount / days;
