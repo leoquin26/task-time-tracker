@@ -51,52 +51,50 @@ router.get('/', auth, async (req, res) => {
  * Obtener un goal con su progreso (hasta hoy si está en curso)
  */
 router.get('/:id', auth, async (req, res) => {
-  try {
-    // 1. Obtener el goal
-    const goal = await Goal.findOne({ _id: req.params.id, userId: req.user.id });
-    if (!goal) return res.status(404).json({ message: 'Goal not found' });
-
-    // 2. Obtener zona horaria del usuario
-    const user = await User.findById(req.user.id);
-    const tz = user.timezone || 'UTC';
-
-    // 3. Interpretar fechas directamente como Date en TZ y ajustar al día completo
-    const startLocal = moment.tz(goal.startDate, tz).startOf('day');
-    const endLocal   = moment.tz(goal.endDate,   tz).endOf('day');
-
-    // 4. Convertir a UTC para la query
-    const startUtc = startLocal.utc().toDate();
-    const endUtc   = endLocal  .utc().toDate();
-
-    // 5. Traer tareas en ese rango
-    const tasks = await Task.find({
-      userId: req.user.id,
-      fecha: { $gte: startUtc, $lte: endUtc }
-    });
-
-    // 6. Calcular métricas
-    const achieved = tasks.reduce((sum, t) => sum + (t.monto || 0), 0);
-    const days      = endLocal.diff(startLocal, 'days') + 1;
-    const dailyTarget = goal.targetAmount / days;
-    const rate       = user.hourlyRate || 0;
-    const hoursPerDay = rate > 0 ? dailyTarget / rate : 0;
-
-    res.json({
-      ...goal.toObject(),
-      progress: {
-        achieved: Number(achieved.toFixed(2)),
-        remaining: Number(Math.max(goal.targetAmount - achieved, 0).toFixed(2)),
-        percent:   Number(Math.min((achieved / goal.targetAmount) * 100, 100).toFixed(2)),
-        days,
-        dailyTarget: Number(dailyTarget.toFixed(2)),
-        hoursPerDay: Number(hoursPerDay.toFixed(2))
-      }
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
+    try {
+      // 1. Obtener el goal
+      const goal = await Goal.findOne({ _id: req.params.id, userId: req.user.id });
+      if (!goal) return res.status(404).json({ message: 'Goal not found' });
+  
+      // 2. Construir rangos en UTC basados en startDate/endDate
+      const startUtc = new Date(goal.startDate);
+      startUtc.setUTCHours(0, 0, 0, 0);
+  
+      const endUtc = new Date(goal.endDate);
+      endUtc.setUTCHours(23, 59, 59, 999);
+  
+      // 3. Traer sólo las tareas en ese rango exacto
+      const tasks = await Task.find({
+        userId: req.user.id,
+        fecha: { $gte: startUtc, $lte: endUtc }
+      });
+  
+      // 4. Calcular métricas
+      const achieved = tasks.reduce((sum, t) => sum + (t.monto || 0), 0);
+      const days = Math.floor((endUtc - startUtc) / (1000 * 60 * 60 * 24)) + 1;
+      const dailyTarget = goal.targetAmount / days;
+  
+      const user = await User.findById(req.user.id);
+      const rate = user.hourlyRate || 0;
+      const hoursPerDay = rate > 0 ? dailyTarget / rate : 0;
+  
+      // 5. Responder con el progreso
+      res.json({
+        ...goal.toObject(),
+        progress: {
+          achieved: Number(achieved.toFixed(2)),
+          remaining: Number(Math.max(goal.targetAmount - achieved, 0).toFixed(2)),
+          percent:   Number(Math.min((achieved / goal.targetAmount) * 100, 100).toFixed(2)),
+          days,
+          dailyTarget: Number(dailyTarget.toFixed(2)),
+          hoursPerDay: Number(hoursPerDay.toFixed(2))
+        }
+      });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: 'Server error' });
+    }
+  });
 
 /**
  * PUT /api/goals/:id
