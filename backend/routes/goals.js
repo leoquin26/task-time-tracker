@@ -48,7 +48,7 @@ router.get('/', auth, async (req, res) => {
 
 /**
  * GET /api/goals/:id
- * Obtener un goal con su progreso, solo hasta hoy si el goal sigue en curso
+ * Obtener un goal con su progreso (hasta hoy si está en curso)
  */
 router.get('/:id', auth, async (req, res) => {
   try {
@@ -58,29 +58,28 @@ router.get('/:id', auth, async (req, res) => {
     });
     if (!goal) return res.status(404).json({ message: 'Goal not found' });
 
-    // Definimos inicio/final del goal en UTC
+    // Inicio y fin del goal en UTC, al día completo
     const startUtc = moment.utc(goal.startDate).startOf('day').toDate();
     const endUtc   = moment.utc(goal.endDate).endOf('day').toDate();
-    // Para el cálculo de progreso solo sumamos hasta hoy si hoy está antes del endUtc
-    const todayUtcEnd = moment.utc().endOf('day').toDate();
-    const sumEnd = todayUtcEnd < endUtc ? todayUtcEnd : endUtc;
+    // Solo sumamos hasta hoy si hoy es anterior al endUtc
+    const todayEndUtc = moment.utc().endOf('day').toDate();
+    const effectiveEnd = todayEndUtc < endUtc ? todayEndUtc : endUtc;
 
-    // Traemos tareas entre startUtc y sumEnd
+    // Buscar tareas entre startUtc y effectiveEnd
     const tasks = await Task.find({
       userId: req.user.id,
-      fecha: { $gte: startUtc, $lte: sumEnd }
+      fecha: { $gte: startUtc, $lte: effectiveEnd }
     });
+
     const achieved = tasks.reduce((sum, t) => sum + (t.monto || 0), 0);
 
-    // Duración total del goal en días (incluye ambos extremos)
+    // Duración completa del goal en días
     const days = moment.utc(goal.endDate)
       .endOf('day')
       .diff(moment.utc(goal.startDate).startOf('day'), 'days') + 1;
 
-    // Objetivo diario en $
+    // Cálculo de objetivo diario y horas por día
     const dailyTarget = goal.targetAmount / days;
-
-    // Tarifa del usuario para horas por día
     const user = await User.findById(req.user.id);
     const rate = user.hourlyRate || 0;
     const hoursPerDay = rate > 0 ? dailyTarget / rate : 0;
@@ -111,7 +110,7 @@ router.put('/:id', auth, async (req, res) => {
     const { title, targetAmount, startDate, endDate } = req.body;
     const goal = await Goal.findOneAndUpdate(
       { _id: req.params.id, userId: req.user.id },
-      { title, targetAmount, startDate, endDate },
+      { title, targetAmount, startDate: new Date(startDate), endDate: new Date(endDate) },
       { new: true }
     );
     if (!goal) return res.status(404).json({ message: 'Goal not found' });
