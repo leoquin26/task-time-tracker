@@ -48,48 +48,59 @@ router.get('/', auth, async (req, res) => {
 
 /**
  * GET /api/goals/:id
- * Obtener un goal con su progreso
+ * Obtener un goal con su progreso, solo hasta hoy si el goal sigue en curso
  */
 router.get('/:id', auth, async (req, res) => {
-    try {
-      const goal = await Goal.findOne({ _id: req.params.id, userId: req.user.id });
-      if (!goal) return res.status(404).json({ message: 'Goal not found' });
-  
-      // Usa moment.utc para que no aplique desplazamiento de zona
-      const startUtc = moment.utc(goal.startDate).startOf('day').toDate();
-      const endUtc   = moment.utc(goal.endDate).endOf('day').toDate();
-  
-      const tasks = await Task.find({
-        userId: req.user.id,
-        fecha: { $gte: startUtc, $lte: endUtc }
-      });
-      const achieved = tasks.reduce((sum, t) => sum + (t.monto||0), 0);
-  
-      const days = moment.utc(goal.endDate)
-        .endOf('day')
-        .diff(moment.utc(goal.startDate).startOf('day'), 'days') + 1;
-  
-      const dailyTarget = goal.targetAmount / days;
-      const user = await User.findById(req.user.id);
-      const rate = user.hourlyRate || 0;
-      const hoursPerDay = rate>0 ? dailyTarget/rate : 0;
-  
-      res.json({
-        ...goal.toObject(),
-        progress: {
-          achieved,
-          remaining: Math.max(goal.targetAmount - achieved,0),
-          percent: Math.min((achieved/goal.targetAmount)*100,100).toFixed(2),
-          days,
-          dailyTarget: Number(dailyTarget.toFixed(2)),
-          hoursPerDay: Number(hoursPerDay.toFixed(2))
-        }
-      });
-    } catch(err) {
-      console.error(err);
-      res.status(500).json({ message: 'Server error' });
-    }
-  });
+  try {
+    const goal = await Goal.findOne({
+      _id: req.params.id,
+      userId: req.user.id
+    });
+    if (!goal) return res.status(404).json({ message: 'Goal not found' });
+
+    // Definimos inicio/final del goal en UTC
+    const startUtc = moment.utc(goal.startDate).startOf('day').toDate();
+    const endUtc   = moment.utc(goal.endDate).endOf('day').toDate();
+    // Para el cálculo de progreso solo sumamos hasta hoy si hoy está antes del endUtc
+    const todayUtcEnd = moment.utc().endOf('day').toDate();
+    const sumEnd = todayUtcEnd < endUtc ? todayUtcEnd : endUtc;
+
+    // Traemos tareas entre startUtc y sumEnd
+    const tasks = await Task.find({
+      userId: req.user.id,
+      fecha: { $gte: startUtc, $lte: sumEnd }
+    });
+    const achieved = tasks.reduce((sum, t) => sum + (t.monto || 0), 0);
+
+    // Duración total del goal en días (incluye ambos extremos)
+    const days = moment.utc(goal.endDate)
+      .endOf('day')
+      .diff(moment.utc(goal.startDate).startOf('day'), 'days') + 1;
+
+    // Objetivo diario en $
+    const dailyTarget = goal.targetAmount / days;
+
+    // Tarifa del usuario para horas por día
+    const user = await User.findById(req.user.id);
+    const rate = user.hourlyRate || 0;
+    const hoursPerDay = rate > 0 ? dailyTarget / rate : 0;
+
+    res.json({
+      ...goal.toObject(),
+      progress: {
+        achieved,
+        remaining: Math.max(goal.targetAmount - achieved, 0),
+        percent: Math.min((achieved / goal.targetAmount) * 100, 100).toFixed(2),
+        days,
+        dailyTarget: Number(dailyTarget.toFixed(2)),
+        hoursPerDay: Number(hoursPerDay.toFixed(2))
+      }
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
 
 /**
  * PUT /api/goals/:id
