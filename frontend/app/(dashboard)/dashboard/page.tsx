@@ -26,14 +26,44 @@ function formatDuration(decimalHours: number): string {
   return parts.join(" ");
 }
 
+//
+// Goal interfaces
+//
+interface Goal {
+  _id: string
+  title: string
+  targetAmount: number
+  startDate: string
+  endDate: string
+}
+interface GoalWithProgress extends Goal {
+  progress: {
+    achieved: number
+    remaining: number
+    percent: number
+    days: number
+    dailyTarget: number
+    hoursPerDay: number
+  }
+}
+
 export default function DashboardPage() {
   const [dailyMetrics, setDailyMetrics] = useState<Metrics | null>(null);
   const [weeklyMetrics, setWeeklyMetrics] = useState<Metrics | null>(null);
   const [monthlyMetrics, setMonthlyMetrics] = useState<Metrics | null>(null);
+  const [goals, setGoals] = useState<GoalWithProgress[]>([])
+  const [isLoadingGoals, setIsLoadingGoals] = useState(true)
+
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
   const apiUrl = process.env.NEXT_PUBLIC_API_URL;
 
+  function parseLocalDate(dateStr: string): Date {
+    const d = new Date(dateStr)
+    d.setMinutes(d.getMinutes() + d.getTimezoneOffset())
+    return d
+  }
+  
   const fetchMetrics = async () => {
     setIsLoading(true);
     const token = localStorage.getItem("token");
@@ -71,8 +101,44 @@ export default function DashboardPage() {
     }
   };
 
+    // Fetch goals + progress from API
+    const fetchGoals = async () => {
+      setIsLoadingGoals(true)
+      const token = localStorage.getItem("token")
+      try {
+        const res = await fetch(`${apiUrl}/api/goals`, { headers: { Authorization: `Bearer ${token}` } })
+        if (!res.ok) throw new Error("Failed to load goals")
+        const list: Goal[] = await res.json()
+        const detailed = await Promise.all(
+          list.map(async g => {
+            const r2 = await fetch(`${apiUrl}/api/goals/${g._id}`, { headers: { Authorization: `Bearer ${token}` } })
+            if (!r2.ok) throw new Error(`Failed to load goal ${g._id}`)
+            const det = await r2.json()
+            const pct = Math.min(Math.round(parseFloat(det.progress.percent)), 100)
+            return {
+              ...g,
+              progress: {
+                achieved: det.progress.achieved,
+                remaining: det.progress.remaining,
+                percent: pct,
+                days: det.progress.days,
+                dailyTarget: det.progress.dailyTarget,
+                hoursPerDay: det.progress.hoursPerDay,
+              },
+            }
+          })
+        )
+        setGoals(detailed)
+      } catch (err: any) {
+        toast.error(err.message || "Error loading goals")
+      } finally {
+        setIsLoadingGoals(false)
+      }
+    }
+
   useEffect(() => {
     fetchMetrics();
+    fetchGoals();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -83,6 +149,68 @@ export default function DashboardPage() {
         <p className="text-muted-foreground">
           Overview of your work hours and earnings
         </p>
+      </div>
+      {/* Goals Section */}
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
+          <h2 className="text-2xl font-semibold">My Goals</h2>
+        </div>
+        {isLoadingGoals ? (
+          <p>Loading goals…</p>
+        ) : goals.length === 0 ? (
+          <p>No goals yet.</p>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2">
+            {goals.map(g => (
+              <Card key={g._id}>
+              <CardHeader className="flex justify-between items-start">
+                <div>
+                  <CardTitle className="py-2">{g.title}</CardTitle>
+                  <p className="text-sm text-muted-foreground">
+                    {format(parseLocalDate(g.startDate), "dd/MM/yyyy")} –{" "}
+                    {format(parseLocalDate(g.endDate), "dd/MM/yyyy")}
+                  </p>
+                </div>
+              </CardHeader>
+
+              <CardContent className="space-y-3">
+                <div className="flex justify-between text-sm font-medium">
+                  <span>${g.progress.achieved.toFixed(2)}</span>
+                  <span>${g.targetAmount.toFixed(2)}</span>
+                </div>
+
+                {/* Progress bar with green fill only */}
+                <div className="relative">
+                  <div className="h-3 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-green-500 rounded-full"
+                      style={{ width: `${g.progress.percent}%` }}
+                    />
+                  </div>
+                  {[25, 50, 75, 100].map((mark) => (
+                    <div
+                      key={mark}
+                      className="absolute top-0 h-full w-[2px] bg-muted-foreground"
+                      style={{ left: `${mark}%`, transform: "translateX(-50%)" }}
+                    />
+                  ))}
+                </div>
+
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  {[0, 25, 50, 75, 100].map((p) => (
+                    <span key={p}>{p}%</span>
+                  ))}
+                </div>
+
+                <p className="text-sm text-muted-foreground">
+                  {g.progress.days} days remaining • ~$
+                  {g.progress.dailyTarget.toFixed(2)} per day
+                </p>
+              </CardContent>
+            </Card>
+            ))}
+          </div>
+        )}
       </div>
 
       <Tabs defaultValue="daily" className="space-y-4">
