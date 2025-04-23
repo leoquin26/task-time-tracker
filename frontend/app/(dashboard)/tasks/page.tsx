@@ -1,4 +1,3 @@
-// app/(dashboard)/tasks/page.tsx
 "use client"
 
 import { useEffect, useState } from "react"
@@ -60,7 +59,7 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination"
-import { Progress } from "@/components/ui/progress"
+import { GoalCard } from "@/components/goal-card"
 
 //
 // Task interfaces
@@ -91,6 +90,7 @@ interface Goal {
   endDate: string
 }
 interface GoalWithProgress extends Goal {
+  currentAmount: number
   progress: {
     achieved: number
     remaining: number
@@ -159,12 +159,13 @@ export default function DashboardPage() {
   const [pageSize, setPageSize] = useState(20)
   const [totalPages, setTotalPages] = useState(1)
 
-  // Single-delete dialog state
+  // Single-delete dialog state for tasks
   const [taskToDelete, setTaskToDelete] = useState<string | null>(null)
 
   // Goals state
   const [goals, setGoals] = useState<GoalWithProgress[]>([])
   const [isLoadingGoals, setIsLoadingGoals] = useState(true)
+  const [openId, setOpenId] = useState<string | null>(null) // For goal deletion dialog
 
   // Fetch tasks from API
   const fetchTasks = async (filter = "all", page = 1, limit = pageSize) => {
@@ -228,6 +229,7 @@ export default function DashboardPage() {
           const pct = Math.min(Math.round(parseFloat(det.progress.percent)), 100)
           return {
             ...g,
+            currentAmount: det.progress.achieved, // Map achieved to currentAmount
             progress: {
               achieved: det.progress.achieved,
               remaining: det.progress.remaining,
@@ -244,6 +246,23 @@ export default function DashboardPage() {
       toast.error(err.message || "Error loading goals")
     } finally {
       setIsLoadingGoals(false)
+    }
+  }
+
+  // Delete a single goal
+  async function deleteGoal(id: string) {
+    try {
+      const token = localStorage.getItem("token")
+      const res = await fetch(`${apiUrl}/api/goals/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) throw new Error("Failed to delete goal")
+      toast.success("Goal deleted")
+      setOpenId(null)
+      fetchGoals()
+    } catch (err) {
+      toast.error((err as Error).message || "Error deleting goal")
     }
   }
 
@@ -455,58 +474,20 @@ export default function DashboardPage() {
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
             {goals.map(g => (
-              <Card key={g._id}>
-              <CardHeader className="flex justify-between items-start">
-                <div>
-                  <CardTitle className="py-2">{g.title}</CardTitle>
-                  <p className="text-sm text-muted-foreground">
-                    {format(parseLocalDate(g.startDate), "dd/MM/yyyy")} –{" "}
-                    {format(parseLocalDate(g.endDate), "dd/MM/yyyy")}
-                  </p>
-                </div>
-              </CardHeader>
-
-              <CardContent className="space-y-3">
-                <div className="flex justify-between text-sm font-medium">
-                  <span>${g.progress.achieved.toFixed(2)}</span>
-                  <span>${g.targetAmount.toFixed(2)}</span>
-                </div>
-
-                {/* Progress bar with green fill only */}
-                <div className="relative">
-                  <div className="h-3 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-green-500 rounded-full"
-                      style={{ width: `${g.progress.percent}%` }}
-                    />
-                  </div>
-                  {[25, 50, 75, 100].map((mark) => (
-                    <div
-                      key={mark}
-                      className="absolute top-0 h-full w-[2px] bg-muted-foreground"
-                      style={{ left: `${mark}%`, transform: "translateX(-50%)" }}
-                    />
-                  ))}
-                </div>
-
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  {[0, 25, 50, 75, 100].map((p) => (
-                    <span key={p}>{p}%</span>
-                  ))}
-                </div>
-
-                <p className="text-sm text-muted-foreground">
-                  {g.progress.days} days remaining • ~$
-                  {g.progress.dailyTarget.toFixed(2)} per day
-                </p>
-              </CardContent>
-            </Card>
+              <GoalCard
+                key={g._id}
+                goal={g}
+                openId={openId}
+                setOpenId={setOpenId}
+                deleteGoal={deleteGoal}
+                parseLocalDate={parseLocalDate}
+              />
             ))}
           </div>
         )}
       </div>
 
-      {/* Single-delete Dialog */}
+      {/* Single-delete Dialog for Tasks */}
       <AlertDialog open={!!taskToDelete} onOpenChange={(o) => !o && setTaskToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -782,7 +763,7 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
-      {/* Bulk Delete Dialog */}
+      {/* Bulk Delete Dialog for Tasks */}
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>

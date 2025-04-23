@@ -1,30 +1,11 @@
-// app/(dashboard)/goals/page.tsx
 "use client"
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import {
-  AlertDialog,
-  AlertDialogTrigger,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogCancel,
-  AlertDialogAction,
-} from "@/components/ui/alert-dialog"
-import { format } from "date-fns"
 import { useToast } from "@/hooks/use-toast"
-import { Plus, Trash2 } from "lucide-react"
-import Link from "next/link"
+import { Plus } from "lucide-react"
+import { GoalCard } from "@/components/goal-card"
 
 // Ajusta un ISO-8601 al inicio de ese día en tu zona local
 function parseLocalDate(dateStr: string): Date {
@@ -37,6 +18,7 @@ interface Goal {
   _id: string
   title: string
   targetAmount: number
+  currentAmount: number
   startDate: string
   endDate: string
 }
@@ -137,90 +119,16 @@ export default function GoalsListPage() {
         <p>No goals yet.</p>
       ) : (
         <div className="grid gap-6 md:grid-cols-2">
-         {goals.map((g) => {
-            return (
-              <Link key={g._id} href={`/goals/${g._id}`}>
-                <Card key={g._id}>
-                <CardHeader className="flex justify-between items-start">
-                    <div>
-                    <CardTitle>{g.title}</CardTitle>
-                    <p className="text-sm text-muted-foreground">
-                        {format(parseLocalDate(g.startDate), "dd/MM/yyyy")} –{" "}
-                        {format(parseLocalDate(g.endDate), "dd/MM/yyyy")}
-                    </p>
-                    </div>
-                    <AlertDialog
-                    open={openId === g._id}
-                    onOpenChange={(o) => !o && setOpenId(null)}
-                    >
-                    <AlertDialogTrigger asChild>
-                        <Button
-                        size="icon"
-                        variant="ghost"
-                        className="text-destructive hover:text-destructive-foreground"
-                        onClick={() => setOpenId(g._id)}
-                        >
-                        <Trash2 className="h-4 w-4" />
-                        </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                        <AlertDialogHeader>
-                        <AlertDialogTitle>Delete Goal</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            This action cannot be undone.
-                        </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction
-                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                            onClick={() => deleteGoal(g._id)}
-                        >
-                            Delete
-                        </AlertDialogAction>
-                        </AlertDialogFooter>
-                    </AlertDialogContent>
-                    </AlertDialog>
-                </CardHeader>
-
-                <CardContent className="space-y-3">
-                    <div className="flex justify-between text-sm font-medium">
-                    <span>${g.progress.achieved.toFixed(2)}</span>
-                    <span>${g.targetAmount.toFixed(2)}</span>
-                    </div>
-
-                    {/* Progress bar with green fill only */}
-                    <div className="relative">
-                    <div className="h-3 bg-muted rounded-full overflow-hidden">
-                        <div
-                        className="h-full bg-green-500 rounded-full"
-                        style={{ width: `${g.progress.percent}%` }}
-                        />
-                    </div>
-                    {[25, 50, 75, 100].map((mark) => (
-                        <div
-                        key={mark}
-                        className="absolute top-0 h-full w-[2px] bg-muted-foreground"
-                        style={{ left: `${mark}%`, transform: "translateX(-50%)" }}
-                        />
-                    ))}
-                    </div>
-
-                    <div className="flex justify-between text-xs text-muted-foreground">
-                    {[0, 25, 50, 75, 100].map((p) => (
-                        <span key={p}>{p}%</span>
-                    ))}
-                    </div>
-
-                    <p className="text-sm text-muted-foreground">
-                    {g.progress.days} days remaining • ~$
-                    {g.progress.dailyTarget.toFixed(2)} per day
-                    </p>
-                </CardContent>
-                </Card>
-              </Link>
-            )
-          })}
+          {goals.map((g) => (
+            <GoalCard
+              key={g._id}
+              goal={g}
+              openId={openId}
+              setOpenId={setOpenId}
+              deleteGoal={deleteGoal}
+              parseLocalDate={parseLocalDate}
+            />
+          ))}
         </div>
       )}
     </div>

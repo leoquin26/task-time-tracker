@@ -1,29 +1,30 @@
-"use client";
+"use client"
 
-import { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Clock, DollarSign, ListTodo } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
-import { format } from "date-fns";
+import { useEffect, useState } from "react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Clock, DollarSign, ListTodo } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
+import { format } from "date-fns"
+import { GoalCard } from "@/components/goal-card"
 
 interface Metrics {
-  totalHoras: number;
-  totalTareas: number;
-  totalMonto: number;
+  totalHoras: number
+  totalTareas: number
+  totalMonto: number
 }
 
 // Función para convertir horas decimales a un formato legible (Hh Mm Ss)
 function formatDuration(decimalHours: number): string {
-  const totalSeconds = Math.round(decimalHours * 3600);
-  const h = Math.floor(totalSeconds / 3600);
-  const m = Math.floor((totalSeconds % 3600) / 60);
-  const s = totalSeconds % 60;
-  let parts: string[] = [];
-  if (h > 0) parts.push(`${h}h`);
-  if (m > 0) parts.push(`${m}m`);
-  if (s > 0 || parts.length === 0) parts.push(`${s}s`);
-  return parts.join(" ");
+  const totalSeconds = Math.round(decimalHours * 3600)
+  const h = Math.floor(totalSeconds / 3600)
+  const m = Math.floor((totalSeconds % 3600) / 60)
+  const s = totalSeconds % 60
+  let parts: string[] = []
+  if (h > 0) parts.push(`${h}h`)
+  if (m > 0) parts.push(`${m}m`)
+  if (s > 0 || parts.length === 0) parts.push(`${s}s`)
+  return parts.join(" ")
 }
 
 //
@@ -37,6 +38,7 @@ interface Goal {
   endDate: string
 }
 interface GoalWithProgress extends Goal {
+  currentAmount: number
   progress: {
     achieved: number
     remaining: number
@@ -47,26 +49,27 @@ interface GoalWithProgress extends Goal {
   }
 }
 
+function parseLocalDate(dateStr: string): Date {
+  const d = new Date(dateStr)
+  d.setMinutes(d.getMinutes() + d.getTimezoneOffset())
+  return d
+}
+
 export default function DashboardPage() {
-  const [dailyMetrics, setDailyMetrics] = useState<Metrics | null>(null);
-  const [weeklyMetrics, setWeeklyMetrics] = useState<Metrics | null>(null);
-  const [monthlyMetrics, setMonthlyMetrics] = useState<Metrics | null>(null);
+  const [dailyMetrics, setDailyMetrics] = useState<Metrics | null>(null)
+  const [weeklyMetrics, setWeeklyMetrics] = useState<Metrics | null>(null)
+  const [monthlyMetrics, setMonthlyMetrics] = useState<Metrics | null>(null)
   const [goals, setGoals] = useState<GoalWithProgress[]>([])
   const [isLoadingGoals, setIsLoadingGoals] = useState(true)
+  const [openId, setOpenId] = useState<string | null>(null) // For goal deletion dialog
 
-  const [isLoading, setIsLoading] = useState(true);
-  const { toast } = useToast();
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+  const [isLoading, setIsLoading] = useState(true)
+  const { toast } = useToast()
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL
 
-  function parseLocalDate(dateStr: string): Date {
-    const d = new Date(dateStr)
-    d.setMinutes(d.getMinutes() + d.getTimezoneOffset())
-    return d
-  }
-  
   const fetchMetrics = async () => {
-    setIsLoading(true);
-    const token = localStorage.getItem("token");
+    setIsLoading(true)
+    const token = localStorage.getItem("token")
 
     try {
       const [dailyRes, weeklyRes, monthlyRes] = await Promise.all([
@@ -79,68 +82,86 @@ export default function DashboardPage() {
         fetch(`${apiUrl}/api/metrics/monthly`, {
           headers: { Authorization: `Bearer ${token}` },
         }),
-      ]);
+      ])
 
       if (!dailyRes.ok || !weeklyRes.ok || !monthlyRes.ok) {
-        throw new Error("Failed to fetch metrics");
+        throw new Error("Failed to fetch metrics")
       }
 
-      const daily = await dailyRes.json();
-      const weekly = await weeklyRes.json();
-      const monthly = await monthlyRes.json();
+      const daily = await dailyRes.json()
+      const weekly = await weeklyRes.json()
+      const monthly = await monthlyRes.json()
 
-      setDailyMetrics(daily);
-      setWeeklyMetrics(weekly);
-      setMonthlyMetrics(monthly);
+      setDailyMetrics(daily)
+      setWeeklyMetrics(weekly)
+      setMonthlyMetrics(monthly)
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Error al cargar las métricas"
-      );
+      )
     } finally {
-      setIsLoading(false);
+      setIsLoading(false)
     }
-  };
+  }
 
-    // Fetch goals + progress from API
-    const fetchGoals = async () => {
-      setIsLoadingGoals(true)
-      const token = localStorage.getItem("token")
-      try {
-        const res = await fetch(`${apiUrl}/api/goals`, { headers: { Authorization: `Bearer ${token}` } })
-        if (!res.ok) throw new Error("Failed to load goals")
-        const list: Goal[] = await res.json()
-        const detailed = await Promise.all(
-          list.map(async g => {
-            const r2 = await fetch(`${apiUrl}/api/goals/${g._id}`, { headers: { Authorization: `Bearer ${token}` } })
-            if (!r2.ok) throw new Error(`Failed to load goal ${g._id}`)
-            const det = await r2.json()
-            const pct = Math.min(Math.round(parseFloat(det.progress.percent)), 100)
-            return {
-              ...g,
-              progress: {
-                achieved: det.progress.achieved,
-                remaining: det.progress.remaining,
-                percent: pct,
-                days: det.progress.days,
-                dailyTarget: det.progress.dailyTarget,
-                hoursPerDay: det.progress.hoursPerDay,
-              },
-            }
-          })
-        )
-        setGoals(detailed)
-      } catch (err: any) {
-        toast.error(err.message || "Error loading goals")
-      } finally {
-        setIsLoadingGoals(false)
-      }
+  // Fetch goals + progress from API
+  const fetchGoals = async () => {
+    setIsLoadingGoals(true)
+    const token = localStorage.getItem("token")
+    try {
+      const res = await fetch(`${apiUrl}/api/goals`, { headers: { Authorization: `Bearer ${token}` } })
+      if (!res.ok) throw new Error("Failed to load goals")
+      const list: Goal[] = await res.json()
+      const detailed = await Promise.all(
+        list.map(async g => {
+          const r2 = await fetch(`${apiUrl}/api/goals/${g._id}`, { headers: { Authorization: `Bearer ${token}` } })
+          if (!r2.ok) throw new Error(`Failed to load goal ${g._id}`)
+          const det = await r2.json()
+          const pct = Math.min(Math.round(parseFloat(det.progress.percent)), 100)
+          return {
+            ...g,
+            currentAmount: det.progress.achieved, // Map achieved to currentAmount
+            progress: {
+              achieved: det.progress.achieved,
+              remaining: det.progress.remaining,
+              percent: pct,
+              days: det.progress.days,
+              dailyTarget: det.progress.dailyTarget,
+              hoursPerDay: det.progress.hoursPerDay,
+            },
+          }
+        })
+      )
+      setGoals(detailed)
+    } catch (err: any) {
+      toast.error(err.message || "Error loading goals")
+    } finally {
+      setIsLoadingGoals(false)
     }
+  }
+
+  // Delete a single goal
+  async function deleteGoal(id: string) {
+    try {
+      const token = localStorage.getItem("token")
+      const res = await fetch(`${apiUrl}/api/goals/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) throw new Error("Failed to delete goal")
+      toast.success("Goal deleted")
+      setOpenId(null)
+      fetchGoals()
+    } catch (err) {
+      toast.error((err as Error).message || "Error deleting goal")
+    }
+  }
 
   useEffect(() => {
-    fetchMetrics();
-    fetchGoals();
+    fetchMetrics()
+    fetchGoals()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [])
 
   return (
     <div className="space-y-6">
@@ -162,52 +183,14 @@ export default function DashboardPage() {
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
             {goals.map(g => (
-              <Card key={g._id}>
-              <CardHeader className="flex justify-between items-start">
-                <div>
-                  <CardTitle className="py-2">{g.title}</CardTitle>
-                  <p className="text-sm text-muted-foreground">
-                    {format(parseLocalDate(g.startDate), "dd/MM/yyyy")} –{" "}
-                    {format(parseLocalDate(g.endDate), "dd/MM/yyyy")}
-                  </p>
-                </div>
-              </CardHeader>
-
-              <CardContent className="space-y-3">
-                <div className="flex justify-between text-sm font-medium">
-                  <span>${g.progress.achieved.toFixed(2)}</span>
-                  <span>${g.targetAmount.toFixed(2)}</span>
-                </div>
-
-                {/* Progress bar with green fill only */}
-                <div className="relative">
-                  <div className="h-3 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-green-500 rounded-full"
-                      style={{ width: `${g.progress.percent}%` }}
-                    />
-                  </div>
-                  {[25, 50, 75, 100].map((mark) => (
-                    <div
-                      key={mark}
-                      className="absolute top-0 h-full w-[2px] bg-muted-foreground"
-                      style={{ left: `${mark}%`, transform: "translateX(-50%)" }}
-                    />
-                  ))}
-                </div>
-
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  {[0, 25, 50, 75, 100].map((p) => (
-                    <span key={p}>{p}%</span>
-                  ))}
-                </div>
-
-                <p className="text-sm text-muted-foreground">
-                  {g.progress.days} days remaining • ~$
-                  {g.progress.dailyTarget.toFixed(2)} per day
-                </p>
-              </CardContent>
-            </Card>
+              <GoalCard
+                key={g._id}
+                goal={g}
+                openId={openId}
+                setOpenId={setOpenId}
+                deleteGoal={deleteGoal}
+                parseLocalDate={parseLocalDate}
+              />
             ))}
           </div>
         )}
@@ -392,5 +375,5 @@ export default function DashboardPage() {
         </TabsContent>
       </Tabs>
     </div>
-  );
+  )
 }
