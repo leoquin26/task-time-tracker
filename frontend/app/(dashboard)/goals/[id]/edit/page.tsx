@@ -171,6 +171,7 @@ export default function EditGoalPage() {
         setOpenId={setOpenId}
         deleteGoal={deleteGoal}
         parseLocalDate={(dateStr) => parseLocalDate(dateStr, timezone)}
+        timezone={timezone} // Pass the timezone prop
       />
 
       {/* Edit Form */}
