@@ -356,12 +356,12 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent>
                 <div className="flex items-center space-x-2">
-                  <TrendingUp className={`h-4 w-4 ${dailyMetrics?.trend >= 0 ? 'text-green-500' : 'text-red-500'}`} />
-                  <div className={`text-2xl font-bold ${dailyMetrics?.trend >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                  <TrendingUp className={`h-4 w-4 ${(dailyMetrics?.trend ?? 0) >= 0 ? 'text-green-500' : 'text-red-500'}`} />
+                  <div className={`text-2xl font-bold ${(dailyMetrics?.trend ?? 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                     {isLoading ? (
                       <div className="h-8 w-16 animate-pulse rounded bg-muted"></div>
                     ) : (
-                      `${dailyMetrics?.trend || 0}%`
+                      `${dailyMetrics?.trend ?? 0}%`
                     )}
                   </div>
                 </div>
@@ -477,12 +477,12 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent>
                 <div className="flex items-center space-x-2">
-                  <TrendingUp className={`h-4 w-4 ${weeklyMetrics?.trend >= 0 ? 'text-green-500' : 'text-red-500'}`} />
-                  <div className={`text-2xl font-bold ${weeklyMetrics?.trend >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                  <TrendingUp className={`h-4 w-4 ${(weeklyMetrics?.trend ?? 0) >= 0 ? 'text-green-500' : 'text-red-500'}`} />
+                  <div className={`text-2xl font-bold ${(weeklyMetrics?.trend ?? 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                     {isLoading ? (
                       <div className="h-8 w-16 animate-pulse rounded bg-muted"></div>
                     ) : (
-                      `${weeklyMetrics?.trend || 0}%`
+                      `${weeklyMetrics?.trend ?? 0}%`
                     )}
                   </div>
                 </div>
@@ -598,12 +598,12 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent>
                 <div className="flex items-center space-x-2">
-                  <TrendingUp className={`h-4 w-4 ${monthlyMetrics?.trend >= 0 ? 'text-green-500' : 'text-red-500'}`} />
-                  <div className={`text-2xl font-bold ${monthlyMetrics?.trend >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                  <TrendingUp className={`h-4 w-4 ${(monthlyMetrics?.trend ?? 0) >= 0 ? 'text-green-500' : 'text-red-500'}`} />
+                  <div className={`text-2xl font-bold ${(monthlyMetrics?.trend ?? 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                     {isLoading ? (
                       <div className="h-8 w-16 animate-pulse rounded bg-muted"></div>
                     ) : (
-                      `${monthlyMetrics?.trend || 0}%`
+                      `${monthlyMetrics?.trend ?? 0}%`
                     )}
                   </div>
                 </div>
