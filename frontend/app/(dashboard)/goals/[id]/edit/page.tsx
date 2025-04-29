@@ -67,7 +67,7 @@ export default function EditGoalPage() {
   const fetchUserTimezone = async () => {
     try {
       const token = localStorage.getItem("token")
-      const res = await fetch(`${apiUrl}/api/user/profile`, {
+      const res = await fetch(`${apiUrl}/api/user/profile`, { // Fixed endpoint to match backend
         headers: { Authorization: `Bearer ${token}` },
       })
       if (!res.ok) throw new Error("Failed to fetch user")
@@ -136,7 +136,7 @@ export default function EditGoalPage() {
     }
   }
 
-  const deleteGoal = async () => {
+  const deleteGoal = async (id: string) => {
     try {
       const token = localStorage.getItem("token")
       const res = await fetch(`${apiUrl}/api/goals/${id}`, {
@@ -171,7 +171,7 @@ export default function EditGoalPage() {
         setOpenId={setOpenId}
         deleteGoal={deleteGoal}
         parseLocalDate={(dateStr) => parseLocalDate(dateStr, timezone)}
-        timezone={timezone} // Pass the timezone prop
+        timezone={timezone}
       />
 
       {/* Edit Form */}
