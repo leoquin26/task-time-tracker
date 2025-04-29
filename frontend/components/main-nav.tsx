@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { Clock, LayoutDashboard, ListTodo, Target, Settings, LogOut, Menu, X } from 'lucide-react'
+import { Clock, LayoutDashboard, ListTodo, Target, Settings, LogOut, Menu, X, History } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { useRouter } from "next/navigation"
 import { ThemeToggle } from "@/components/theme-toggle"
@@ -60,7 +60,13 @@ export function MainNav() {
       href: "/goals",
       label: "Goals",
       icon: <Target className="h-4 w-4" />,
-      active: pathname?.startsWith("/goals"),
+      active: pathname?.startsWith("/goals") && pathname !== "/goals/history",
+    },
+    {
+      href: "/goals/history",
+      label: "Goal History",
+      icon: <History className="h-4 w-4" />,
+      active: pathname === "/goals/history",
     },
     {
       href: "/profile",

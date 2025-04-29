@@ -21,9 +21,13 @@ router.post('/', auth, async (req, res) => {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ message: 'User not found' });
     const tz = user.timezone || 'UTC';
-    // Ajustar al inicio y fin del día en TZ
-    const start = moment.tz(startDate, tz).startOf('day').toDate();
-    const end   = moment.tz(endDate,   tz).endOf('day').toDate();
+    // Almacenar las fechas tal como se reciben, interpretadas en la zona horaria del usuario
+    const start = moment.tz(startDate, tz).toDate();
+    const end   = moment.tz(endDate,   tz).toDate();
+
+    console.log(`Creating goal for user in timezone ${tz}`);
+    console.log(`Input startDate: ${startDate}, stored as: ${start}`);
+    console.log(`Input endDate: ${endDate}, stored as: ${end}`);
 
     const goal = new Goal({
       userId: req.user.id,
@@ -42,12 +46,89 @@ router.post('/', auth, async (req, res) => {
 
 /**
  * GET /api/goals
- * Listar todos los goals del usuario
+ * Listar todos los goals activos del usuario (que no han alcanzado su endDate)
  */
 router.get('/', auth, async (req, res) => {
   try {
-    const goals = await Goal.find({ userId: req.user.id }).sort({ startDate: -1 });
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    const tz = user.timezone || 'UTC';
+    
+    // Calcular la fecha actual en la zona horaria del usuario
+    const now = moment.tz(tz).toDate();
+
+    const goals = await Goal.find({ 
+      userId: req.user.id,
+      endDate: { $gte: now } // Only active goals
+    }).sort({ startDate: -1 });
+
     res.json(goals);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+/**
+ * GET /api/goals/history
+ * Listar goals completados (cuyo endDate ha pasado)
+ */
+router.get('/history', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    const tz = user.timezone || 'UTC';
+
+    // Calcular la fecha actual en la zona horaria del usuario
+    const now = moment.tz(tz).toDate();
+
+    const goals = await Goal.find({ 
+      userId: req.user.id,
+      endDate: { $lt: now } // Only completed goals
+    }).sort({ endDate: -1 });
+
+    // Enrich each goal with progress metrics
+    const detailedGoals = await Promise.all(
+      goals.map(async (goal) => {
+        // Tomar fechas ya ajustadas a start/end of day
+        const startLocal = moment.tz(goal.startDate, tz);
+        const endLocal   = moment.tz(goal.endDate,   tz).endOf('day');
+
+        // Convertir a UTC para la consulta
+        const startUtc = startLocal.utc().toDate();
+        const endUtc   = endLocal.utc().toDate();
+
+        // Traer tareas en ese rango
+        const tasks = await Task.find({
+          userId: req.user.id,
+          fecha: { $gte: startUtc, $lte: endUtc }
+        });
+
+        // Calcular métricas
+        const achieved = tasks.reduce((sum, t) => sum + (t.monto || 0), 0);
+        const days = endLocal.diff(startLocal, 'days') + 1;
+        const dailyTarget = goal.targetAmount / days;
+        const rate = user.hourlyRate || 0;
+        const hoursPerDay = rate > 0 ? dailyTarget / rate : 0;
+        const percentCompleted = Math.min((achieved / goal.targetAmount) * 100, 100);
+        const percentRemaining = 100 - percentCompleted;
+
+        return {
+          ...goal.toObject(),
+          progress: {
+            achieved: Number(achieved.toFixed(2)),
+            remaining: Number(Math.max(goal.targetAmount - achieved, 0).toFixed(2)),
+            percent: Number(percentCompleted.toFixed(2)),
+            percentRemaining: Number(percentRemaining.toFixed(2)),
+            days,
+            dailyTarget: Number(dailyTarget.toFixed(2)),
+            hoursPerDay: Number(hoursPerDay.toFixed(2))
+          }
+        };
+      })
+    );
+
+    res.json(detailedGoals);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
@@ -69,12 +150,12 @@ router.get('/:id', auth, async (req, res) => {
     const tz = user.timezone || 'UTC';
 
     // 3. Tomar fechas ya ajustadas a start/end of day
-    const startLocal = moment.tz(goal.startDate, tz).startOf('day');
+    const startLocal = moment.tz(goal.startDate, tz);
     const endLocal   = moment.tz(goal.endDate,   tz).endOf('day');
 
     // 4. Convertir a UTC para la consulta
     const startUtc = startLocal.utc().toDate();
-    const endUtc   = endLocal  .utc().toDate();
+    const endUtc   = endLocal.utc().toDate();
 
     // 5. Traer tareas en ese rango
     const tasks = await Task.find({
@@ -116,8 +197,12 @@ router.put('/:id', auth, async (req, res) => {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ message: 'User not found' });
     const tz = user.timezone || 'UTC';
-    const start = moment.tz(startDate, tz).startOf('day').toDate();
-    const end   = moment.tz(endDate,   tz).endOf('day').toDate();
+    const start = moment.tz(startDate, tz).toDate();
+    const end   = moment.tz(endDate,   tz).toDate();
+
+    console.log(`Updating goal for user in timezone ${tz}`);
+    console.log(`Input startDate: ${startDate}, stored as: ${start}`);
+    console.log(`Input endDate: ${endDate}, stored as: ${end}`);
 
     const goal = await Goal.findOneAndUpdate(
       { _id: req.params.id, userId: req.user.id },

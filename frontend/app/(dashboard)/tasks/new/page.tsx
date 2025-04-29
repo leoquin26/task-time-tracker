@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -15,11 +14,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { format } from "date-fns"
 import { enUS } from "date-fns/locale"
+import { fromZonedTime } from "date-fns-tz"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 
 interface UserProfile {
   hourlyRate: number
+  timezone: string
 }
 
 export default function NewTaskPage() {
@@ -45,7 +46,7 @@ export default function NewTaskPage() {
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL
 
-  // Load user profile to get hourly rate
+  // Load user profile to get hourly rate and timezone
   useEffect(() => {
     const fetchUserProfile = async () => {
       const token = localStorage.getItem("token")
@@ -87,6 +88,11 @@ export default function NewTaskPage() {
       return
     }
 
+    if (!userProfile?.timezone) {
+      toast.error("User timezone not found")
+      return
+    }
+
     if (!fecha) {
       toast.error("You must select a date")
       return
@@ -99,8 +105,8 @@ export default function NewTaskPage() {
     const normalTime = horas + minutos / 60 + segundos / 3600
     const exceedTime = exceedHoras + exceedMinutos / 60 + exceedSegundos / 3600
 
-    // Format the date as YYYY-MM-DD keeping the selected day
-    const formattedDate = format(fecha, "yyyy-MM-dd")
+    // Format the date as YYYY-MM-DD in the user's timezone
+    const formattedDate = format(fromZonedTime(fecha, userProfile.timezone), "yyyy-MM-dd")
 
     try {
       const response = await fetch(`${apiUrl}/api/tasks`, {
@@ -169,9 +175,9 @@ export default function NewTaskPage() {
   // Function to handle date selection
   const handleDateSelect = (date: Date | undefined) => {
     setFecha(date)
-    if (date) {
+    if (date && userProfile?.timezone) {
       console.log("Selected date:", date)
-      console.log("Formatted date:", format(date, "yyyy-MM-dd"))
+      console.log("Formatted date in user's timezone:", format(fromZonedTime(date, userProfile.timezone), "yyyy-MM-dd"))
     }
   }
 
@@ -431,4 +437,3 @@ export default function NewTaskPage() {
     </div>
   )
 }
-

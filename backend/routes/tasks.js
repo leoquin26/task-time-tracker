@@ -1,5 +1,3 @@
-// routes/tasks.js
-
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
@@ -7,8 +5,6 @@ const moment = require('moment-timezone');
 const Task = require('../models/Task');
 const User = require('../models/User');
 const authMiddleware = require('../middleware/authMiddleware');
-// Función auxiliar que calcula el rango de fechas según el período (daily, weekly, monthly)
-// tomando en cuenta la zona horaria del usuario.
 const { getDateRangeUser } = require('../utils/dateRange');
 
 /* --------------------------------------------------
@@ -79,7 +75,7 @@ router.post('/parse', authMiddleware, async (req, res) => {
     // si no se envía fecha, se toma el momento actual según la zona horaria.
     let localDate;
     if (fecha) {
-      localDate = moment.tz(fecha + " 00:00", timezone).toDate();
+      localDate = moment.tz(fecha, timezone).toDate();
     } else {
       localDate = moment.tz(timezone).toDate();
     }
@@ -175,8 +171,8 @@ router.get('/summary', authMiddleware, async (req, res) => {
       const user = await User.findById(req.user.id);
       const timezone = user.timezone || 'UTC';
       // Convertir las fechas de inicio y fin de la zona del usuario a UTC
-      const startUtc = moment.tz(req.query.startDate + " 00:00", timezone).utc().toDate();
-      const endUtc = moment.tz(req.query.endDate + " 23:59:59.999", timezone).utc().toDate();
+      const startUtc = moment.tz(req.query.startDate, timezone).toDate();
+      const endUtc = moment.tz(req.query.endDate, timezone).endOf('day').toDate();
       match.fecha = { $gte: startUtc, $lte: endUtc };
     }
 
@@ -218,8 +214,8 @@ router.get('/', authMiddleware, async (req, res) => {
     if (req.query.startDate && req.query.endDate) {
       const user = await User.findById(req.user.id);
       const timezone = user.timezone || 'UTC';
-      const start = moment.tz(req.query.startDate + " 00:00", timezone).utc().toDate();
-      const end = moment.tz(req.query.endDate + " 23:59:59.999", timezone).utc().toDate();
+      const start = moment.tz(req.query.startDate, timezone).toDate();
+      const end = moment.tz(req.query.endDate, timezone).endOf('day').toDate();
       filter.fecha = { $gte: start, $lte: end };
     }
 
@@ -269,7 +265,7 @@ router.post('/', authMiddleware, async (req, res) => {
 
     let localDate;
     if (fecha) {
-      localDate = moment.tz(fecha + " 00:00", timezone).toDate();
+      localDate = moment.tz(fecha, timezone).toDate();
     } else {
       localDate = moment.tz(timezone).toDate();
     }
@@ -307,7 +303,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
     if (fecha) {
       const user = await User.findById(req.user.id);
       const timezone = user.timezone || 'UTC';
-      task.fecha = moment.tz(fecha + " 00:00", timezone).toDate();
+      task.fecha = moment.tz(fecha, timezone).toDate();
     }
     task.taskingHours = taskingHours !== undefined ? taskingHours : task.taskingHours;
     task.exceedHours = exceedHours !== undefined ? exceedHours : task.exceedHours;

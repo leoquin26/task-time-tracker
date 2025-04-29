@@ -24,8 +24,9 @@ import {
   CheckSquare,
 } from "lucide-react"
 import { toast } from "sonner"
-import { format, addDays } from "date-fns"
+import { format, addDays, startOfDay, endOfDay } from "date-fns"
 import { es } from "date-fns/locale"
+import { toZonedTime, fromZonedTime } from "date-fns-tz"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar as CalendarComponent } from "@/components/ui/calendar"
@@ -104,129 +105,152 @@ interface GoalWithProgress extends Goal {
 //
 // Helpers
 //
-function parseLocalDate(dateStr: string): Date {
-  const d = new Date(dateStr)
-  d.setMinutes(d.getMinutes() + d.getTimezoneOffset())
-  return d
+function parseLocalDate(dateStr: string, timezone: string): Date {
+  const utcDate = new Date(dateStr);
+  return toZonedTime(utcDate, timezone);
 }
 
-function safeFormatDate(dateStr?: string): string {
-  if (!dateStr) return "Sin fecha"
-  const date = new Date(dateStr)
-  if (isNaN(date.getTime())) return "Fecha inválida"
-  date.setMinutes(date.getMinutes() + date.getTimezoneOffset())
-  return format(date, "dd/MM/yyyy", { locale: es })
+function safeFormatDate(dateStr: string | undefined, timezone: string): string {
+  if (!dateStr) return "Sin fecha";
+  const date = parseLocalDate(dateStr, timezone);
+  if (isNaN(date.getTime())) return "Fecha inválida";
+  return format(date, "dd/MM/yyyy", { locale: es });
 }
-function formatDateToSpanish(date: Date): string {
-  const d = new Date(date)
-  d.setMinutes(d.getMinutes() + date.getTimezoneOffset())
-  return format(d, "dd/MM/yyyy", { locale: es })
+
+function formatDateToSpanish(date: Date, timezone: string): string {
+  const zonedDate = toZonedTime(date, timezone);
+  return format(zonedDate, "dd/MM/yyyy", { locale: es });
 }
+
 function formatDuration(decimalHours: number): string {
-  const sec = Math.round(decimalHours * 3600)
-  const h = Math.floor(sec / 3600)
-  const m = Math.floor((sec % 3600) / 60)
-  const s = sec % 60
-  const parts: string[] = []
-  if (h) parts.push(`${h}h`)
-  if (m) parts.push(`${m}m`)
-  if (s || !parts.length) parts.push(`${s}s`)
-  return parts.join(" ")
+  const sec = Math.round(decimalHours * 3600);
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  const parts: string[] = [];
+  if (h) parts.push(`${h}h`);
+  if (m) parts.push(`${m}m`);
+  if (s || !parts.length) parts.push(`${s}s`);
+  return parts.join(" ");
 }
 
 export default function DashboardPage() {
-  const router = useRouter()
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL!
+  const router = useRouter();
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL!;
 
   // Tasks state
-  const [tasks, setTasks] = useState<Task[]>([])
-  const [isLoadingTasks, setIsLoadingTasks] = useState(true)
-  const [searchTerm, setSearchTerm] = useState("")
-  const [activeFilter, setActiveFilter] = useState("all")
-  const [customStartDate, setCustomStartDate] = useState<Date>()
-  const [customEndDate, setCustomEndDate] = useState<Date>()
-  const [specificDate, setSpecificDate] = useState<Date>()
-  const [totalHours, setTotalHours] = useState(0)
-  const [totalAmount, setTotalAmount] = useState(0)
-  const [isCalendarOpen, setIsCalendarOpen] = useState(false)
-  const [selectMode, setSelectMode] = useState(false)
-  const [isAllSelected, setIsAllSelected] = useState(false)
-  const [selectedCount, setSelectedCount] = useState(0)
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
-  const [isDeletingBulk, setIsDeletingBulk] = useState(false)
-  const [currentPage, setCurrentPage] = useState(1)
-  const [totalTasks, setTotalTasks] = useState(0)
-  const [pageSize, setPageSize] = useState(20)
-  const [totalPages, setTotalPages] = useState(1)
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [isLoadingTasks, setIsLoadingTasks] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [activeFilter, setActiveFilter] = useState("all");
+  const [customStartDate, setCustomStartDate] = useState<Date>();
+  const [customEndDate, setCustomEndDate] = useState<Date>();
+  const [specificDate, setSpecificDate] = useState<Date>();
+  const [totalHours, setTotalHours] = useState(0);
+  const [totalAmount, setTotalAmount] = useState(0);
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [isAllSelected, setIsAllSelected] = useState(false);
+  const [selectedCount, setSelectedCount] = useState(0);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isDeletingBulk, setIsDeletingBulk] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalTasks, setTotalTasks] = useState(0);
+  const [pageSize, setPageSize] = useState(20);
+  const [totalPages, setTotalPages] = useState(1);
 
   // Single-delete dialog state for tasks
-  const [taskToDelete, setTaskToDelete] = useState<string | null>(null)
+  const [taskToDelete, setTaskToDelete] = useState<string | null>(null);
 
   // Goals state
-  const [goals, setGoals] = useState<GoalWithProgress[]>([])
-  const [isLoadingGoals, setIsLoadingGoals] = useState(true)
-  const [openId, setOpenId] = useState<string | null>(null) // For goal deletion dialog
+  const [goals, setGoals] = useState<GoalWithProgress[]>([]);
+  const [isLoadingGoals, setIsLoadingGoals] = useState(true);
+  const [openId, setOpenId] = useState<string | null>(null); // For goal deletion dialog
+
+  // User timezone
+  const [timezone, setTimezone] = useState<string | null>(null);
+
+  // Fetch user timezone
+  const fetchUserTimezone = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${apiUrl}/api/user/profile`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed to fetch user");
+      const user = await res.json();
+      setTimezone(user.timezone || "UTC");
+    } catch (err) {
+      toast.error("Failed to fetch user timezone, defaulting to UTC");
+      setTimezone("UTC");
+    }
+  };
 
   // Fetch tasks from API
   const fetchTasks = async (filter = "all", page = 1, limit = pageSize) => {
-    setIsLoadingTasks(true)
-    const token = localStorage.getItem("token")
-    let url = `${apiUrl}/api/tasks?page=${page}&limit=${limit}`
-    if (filter === "daily") url = `${apiUrl}/api/tasks/filter/daily`
-    else if (filter === "weekly") url = `${apiUrl}/api/tasks/filter/weekly`
-    else if (filter === "monthly") url = `${apiUrl}/api/tasks/filter/monthly`
+    if (!timezone) return; // Wait for timezone to be fetched
+    setIsLoadingTasks(true);
+    const token = localStorage.getItem("token");
+    let url = `${apiUrl}/api/tasks?page=${page}&limit=${limit}`;
+    if (filter === "daily") url = `${apiUrl}/api/tasks/filter/daily`;
+    else if (filter === "weekly") url = `${apiUrl}/api/tasks/filter/weekly`;
+    else if (filter === "monthly") url = `${apiUrl}/api/tasks/filter/monthly`;
     else if (filter === "custom" && customStartDate && customEndDate) {
-      const s = format(customStartDate, "yyyy-MM-dd")
-      const e = format(customEndDate, "yyyy-MM-dd")
-      url = `${apiUrl}/api/tasks?startDate=${s}&endDate=${e}&page=${page}&limit=${limit}`
+      const s = format(fromZonedTime(startOfDay(customStartDate), timezone), "yyyy-MM-dd");
+      const e = format(fromZonedTime(endOfDay(customEndDate), timezone), "yyyy-MM-dd");
+      url = `${apiUrl}/api/tasks?startDate=${s}&endDate=${e}&page=${page}&limit=${limit}`;
     } else if (filter === "specific-day" && specificDate) {
-      const s = format(specificDate, "yyyy-MM-dd")
-      const e = format(addDays(specificDate, 1), "yyyy-MM-dd")
-      url = `${apiUrl}/api/tasks?startDate=${s}&endDate=${e}&page=${page}&limit=${limit}`
+      const s = format(fromZonedTime(startOfDay(specificDate), timezone), "yyyy-MM-dd");
+      const e = format(fromZonedTime(endOfDay(specificDate), timezone), "yyyy-MM-dd");
+      url = `${apiUrl}/api/tasks?startDate=${s}&endDate=${e}&page=${page}&limit=${limit}`;
     }
     try {
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
-      if (!res.ok) throw new Error("Failed to fetch tasks")
-      const data: any = await res.json()
-      let list: Task[] = []
-      let total = 0
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error("Failed to fetch tasks");
+      const data: any = await res.json();
+      let list: Task[] = [];
+      let total = 0;
       if (Array.isArray(data)) {
-        list = data; total = data.length
-        setTotalPages(1); setCurrentPage(1)
+        list = data;
+        total = data.length;
+        setTotalPages(1);
+        setCurrentPage(1);
       } else {
-        list = data.tasks; total = data.total
-        setTotalTasks(data.total)
-        setTotalPages(data.pages)
-        setCurrentPage(data.page)
+        list = data.tasks;
+        total = data.total;
+        setTotalTasks(data.total);
+        setTotalPages(data.pages);
+        setCurrentPage(data.page);
       }
-      const withSel = list.map(t => ({ ...t, selected: false }))
-      setTasks(withSel)
-      setTotalTasks(total)
-      setIsAllSelected(false)
-      setSelectedCount(0)
-      setTotalHours(list.reduce((a, t) => a + (t.horas || 0), 0))
-      setTotalAmount(Number(list.reduce((a, t) => a + (t.monto || 0), 0).toFixed(2)))
+      const withSel = list.map(t => ({ ...t, selected: false }));
+      setTasks(withSel);
+      setTotalTasks(total);
+      setIsAllSelected(false);
+      setSelectedCount(0);
+      setTotalHours(list.reduce((a, t) => a + (t.horas || 0), 0));
+      setTotalAmount(Number(list.reduce((a, t) => a + (t.monto || 0), 0).toFixed(2)));
     } catch {
-      toast.error("Failed to load tasks")
+      toast.error("Failed to load tasks");
     } finally {
-      setIsLoadingTasks(false)
+      setIsLoadingTasks(false);
     }
-  }
+  };
 
   // Fetch goals + progress from API
   const fetchGoals = async () => {
-    setIsLoadingGoals(true)
-    const token = localStorage.getItem("token")
+    if (!timezone) return; // Wait for timezone to be fetched
+    setIsLoadingGoals(true);
+    const token = localStorage.getItem("token");
     try {
-      const res = await fetch(`${apiUrl}/api/goals`, { headers: { Authorization: `Bearer ${token}` } })
-      if (!res.ok) throw new Error("Failed to load goals")
-      const list: Goal[] = await res.json()
+      const res = await fetch(`${apiUrl}/api/goals`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error("Failed to load goals");
+      const list: Goal[] = await res.json();
       const detailed = await Promise.all(
         list.map(async g => {
-          const r2 = await fetch(`${apiUrl}/api/goals/${g._id}`, { headers: { Authorization: `Bearer ${token}` } })
-          if (!r2.ok) throw new Error(`Failed to load goal ${g._id}`)
-          const det = await r2.json()
-          const pct = Math.min(Math.round(parseFloat(det.progress.percent)), 100)
+          const r2 = await fetch(`${apiUrl}/api/goals/${g._id}`, { headers: { Authorization: `Bearer ${token}` } });
+          if (!r2.ok) throw new Error(`Failed to load goal ${g._id}`);
+          const det = await r2.json();
+          const pct = Math.min(Math.round(parseFloat(det.progress.percent)), 100);
           return {
             ...g,
             currentAmount: det.progress.achieved, // Map achieved to currentAmount
@@ -238,66 +262,67 @@ export default function DashboardPage() {
               dailyTarget: det.progress.dailyTarget,
               hoursPerDay: det.progress.hoursPerDay,
             },
-          }
+          };
         })
-      )
-      setGoals(detailed)
+      );
+      setGoals(detailed);
     } catch (err: any) {
-      toast.error(err.message || "Error loading goals")
+      toast.error(err.message || "Error loading goals");
     } finally {
-      setIsLoadingGoals(false)
+      setIsLoadingGoals(false);
     }
-  }
+  };
 
   // Delete a single goal
   async function deleteGoal(id: string) {
     try {
-      const token = localStorage.getItem("token")
+      const token = localStorage.getItem("token");
       const res = await fetch(`${apiUrl}/api/goals/${id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
-      })
-      if (!res.ok) throw new Error("Failed to delete goal")
-      toast.success("Goal deleted")
-      setOpenId(null)
-      fetchGoals()
+      });
+      if (!res.ok) throw new Error("Failed to delete goal");
+      toast.success("Goal deleted");
+      setOpenId(null);
+      fetchGoals();
     } catch (err) {
-      toast.error((err as Error).message || "Error deleting goal")
+      toast.error((err as Error).message || "Error deleting goal");
     }
   }
 
   useEffect(() => {
-    fetchTasks()
-    fetchGoals()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    fetchUserTimezone().then(() => {
+      fetchTasks();
+      fetchGoals();
+    });
+  }, [timezone]);
 
   // Delete a single task when confirmed in modal
   const doDeleteTask = async () => {
-    if (!taskToDelete) return
-    setIsDeletingBulk(true)
-    const token = localStorage.getItem("token")
+    if (!taskToDelete) return;
+    setIsDeletingBulk(true);
+    const token = localStorage.getItem("token");
     try {
       const res = await fetch(`${apiUrl}/api/tasks/${taskToDelete}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
-      })
-      if (!res.ok) throw new Error("Failed to delete task")
-      toast.success("Task deleted successfully")
-      setTaskToDelete(null)
-      fetchTasks(activeFilter, currentPage, pageSize)
+      });
+      if (!res.ok) throw new Error("Failed to delete task");
+      toast.success("Task deleted successfully");
+      setTaskToDelete(null);
+      fetchTasks(activeFilter, currentPage, pageSize);
     } catch {
-      toast.error("Error deleting task")
+      toast.error("Error deleting task");
     } finally {
-      setIsDeletingBulk(false)
+      setIsDeletingBulk(false);
     }
-  }
+  };
 
   // Bulk delete selected tasks
   const deleteSelectedTasks = async () => {
-    setIsDeletingBulk(true)
-    const token = localStorage.getItem("token")
-    const ids = tasks.filter(t => t.selected).map(t => t._id)
+    setIsDeletingBulk(true);
+    const token = localStorage.getItem("token");
+    const ids = tasks.filter(t => t.selected).map(t => t._id);
     try {
       const res = await fetch(`${apiUrl}/api/tasks/bulk`, {
         method: "DELETE",
@@ -306,92 +331,92 @@ export default function DashboardPage() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ ids }),
-      })
-      if (!res.ok) throw new Error("Failed to delete tasks")
-      const resJson = await res.json()
-      toast.success(`Successfully deleted ${resJson.totalDeleted} tasks`)
-      setSelectMode(false)
-      setIsDeleteDialogOpen(false)
-      fetchTasks(activeFilter, currentPage, pageSize)
+      });
+      if (!res.ok) throw new Error("Failed to delete tasks");
+      const resJson = await res.json();
+      toast.success(`Successfully deleted ${resJson.totalDeleted} tasks`);
+      setSelectMode(false);
+      setIsDeleteDialogOpen(false);
+      fetchTasks(activeFilter, currentPage, pageSize);
     } catch {
-      toast.error("Error deleting tasks")
+      toast.error("Error deleting tasks");
     } finally {
-      setIsDeletingBulk(false)
+      setIsDeletingBulk(false);
     }
-  }
+  };
 
   // Handlers for selection, filters, pagination
   const toggleSelectMode = () => {
-    setSelectMode(!selectMode)
+    setSelectMode(!selectMode);
     if (selectMode) {
-      setTasks(tasks.map(t => ({ ...t, selected: false })))
-      setIsAllSelected(false)
-      setSelectedCount(0)
+      setTasks(tasks.map(t => ({ ...t, selected: false })));
+      setIsAllSelected(false);
+      setSelectedCount(0);
     }
-  }
+  };
   const toggleTaskSelection = (id: string) => {
-    const upd = tasks.map(t => t._id === id ? { ...t, selected: !t.selected } : t)
-    setTasks(upd)
-    const sel = upd.filter(t => t.selected).length
-    setSelectedCount(sel)
-    setIsAllSelected(sel === upd.length && upd.length > 0)
-  }
+    const upd = tasks.map(t => (t._id === id ? { ...t, selected: !t.selected } : t));
+    setTasks(upd);
+    const sel = upd.filter(t => t.selected).length;
+    setSelectedCount(sel);
+    setIsAllSelected(sel === upd.length && upd.length > 0);
+  };
   const toggleSelectAll = () => {
-    const next = !isAllSelected
-    const upd = tasks.map(t => ({ ...t, selected: next }))
-    setTasks(upd)
-    setIsAllSelected(next)
-    setSelectedCount(next ? upd.length : 0)
-  }
+    const next = !isAllSelected;
+    const upd = tasks.map(t => ({ ...t, selected: next }));
+    setTasks(upd);
+    setIsAllSelected(next);
+    setSelectedCount(next ? upd.length : 0);
+  };
   const handleFilterChange = (v: string) => {
-    setActiveFilter(v)
-    setCurrentPage(1)
-    fetchTasks(v, 1, pageSize)
-    setSelectMode(false)
-  }
+    setActiveFilter(v);
+    setCurrentPage(1);
+    fetchTasks(v, 1, pageSize);
+    setSelectMode(false);
+  };
   const handlePageChange = (p: number) => {
-    if (p < 1 || p > totalPages) return
-    setCurrentPage(p)
-    fetchTasks(activeFilter, p, pageSize)
-  }
+    if (p < 1 || p > totalPages) return;
+    setCurrentPage(p);
+    fetchTasks(activeFilter, p, pageSize);
+  };
   const handlePageSizeChange = (v: string) => {
-    const n = +v
-    setPageSize(n)
-    setCurrentPage(1)
-    fetchTasks(activeFilter, 1, n)
-  }
+    const n = +v;
+    setPageSize(n);
+    setCurrentPage(1);
+    fetchTasks(activeFilter, 1, n);
+  };
   const handleCustomDateFilter = () => {
     if (customStartDate && customEndDate) {
-      setActiveFilter("custom")
-      setCurrentPage(1)
-      fetchTasks("custom", 1, pageSize)
+      setActiveFilter("custom");
+      setCurrentPage(1);
+      fetchTasks("custom", 1, pageSize);
     } else {
-      toast.error("Please select a start and end date")
+      toast.error("Please select a start and end date");
     }
-  }
+  };
   const handleSpecificDayFilter = () => {
     if (specificDate) {
-      setActiveFilter("specific-day")
-      setCurrentPage(1)
-      fetchTasks("specific-day", 1, pageSize)
-      setIsCalendarOpen(false)
+      setActiveFilter("specific-day");
+      setCurrentPage(1);
+      fetchTasks("specific-day", 1, pageSize);
+      setIsCalendarOpen(false);
     } else {
-      toast.error("Please select a date")
+      toast.error("Please select a date");
     }
-  }
+  };
   const renderPaginationItems = () => {
-    const items = []
-    const max = 5
+    const items = [];
+    const max = 5;
     items.push(
       <PaginationItem key="first">
         <PaginationLink isActive={currentPage === 1} onClick={() => handlePageChange(1)}>
           1
         </PaginationLink>
       </PaginationItem>
-    )
-    const start = Math.max(2, currentPage - Math.floor(max / 2))
-    const end = Math.min(totalPages - 1, start + max - 3)
-    if (start > 2) items.push(<PaginationItem key="ell-start"><PaginationEllipsis/></PaginationItem>)
+    );
+    const start = Math.max(2, currentPage - Math.floor(max / 2));
+    const end = Math.min(totalPages - 1, start + max - 3);
+    if (start > 2) items.push(<PaginationItem key="ell-start"><PaginationEllipsis/></PaginationItem>);
     for (let i = start; i <= end; i++) {
       items.push(
         <PaginationItem key={i}>
@@ -399,36 +424,40 @@ export default function DashboardPage() {
             {i}
           </PaginationLink>
         </PaginationItem>
-      )
+      );
     }
-    if (end < totalPages - 1) items.push(<PaginationItem key="ell-end"><PaginationEllipsis/></PaginationItem>)
+    if (end < totalPages - 1) items.push(<PaginationItem key="ell-end"><PaginationEllipsis/></PaginationItem>);
     if (totalPages > 1) items.push(
       <PaginationItem key="last">
         <PaginationLink isActive={currentPage === totalPages} onClick={() => handlePageChange(totalPages)}>
           {totalPages}
         </PaginationLink>
       </PaginationItem>
-    )
-    return items
-  }
+    );
+    return items;
+  };
 
   const filteredTasks = tasks.filter(t =>
     (t.descripcion || "").toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  );
+
   const getFilterLabel = () => {
+    if (!timezone) return "Loading...";
     switch (activeFilter) {
-      case "daily": return "Today"
-      case "weekly": return "This Week"
-      case "monthly": return "This Month"
+      case "daily": return "Today";
+      case "weekly": return "This Week";
+      case "monthly": return "This Month";
       case "custom":
         return customStartDate && customEndDate
-          ? `${format(customStartDate, "dd 'de' MMMM 'de' yyyy", { locale: es })} – ${format(customEndDate, "dd 'de' MMMM 'de' yyyy", { locale: es })}`
-          : "Custom Period"
+          ? `${format(toZonedTime(customStartDate, timezone), "dd 'de' MMMM 'de' yyyy", { locale: es })} – ${format(toZonedTime(customEndDate, timezone), "dd 'de' MMMM 'de' yyyy", { locale: es })}`
+          : "Custom Period";
       case "specific-day":
-        return specificDate ? formatDateToSpanish(specificDate) : "Specific Day"
-      default: return "All Tasks"
+        return specificDate ? formatDateToSpanish(specificDate, timezone) : "Specific Day";
+      default: return "All Tasks";
     }
-  }
+  };
+
+  if (!timezone) return <p>Loading timezone...</p>;
 
   return (
     <div className="space-y-6">
@@ -480,7 +509,7 @@ export default function DashboardPage() {
                 openId={openId}
                 setOpenId={setOpenId}
                 deleteGoal={deleteGoal}
-                parseLocalDate={parseLocalDate}
+                parseLocalDate={(dateStr) => parseLocalDate(dateStr, timezone)}
               />
             ))}
           </div>
@@ -565,7 +594,7 @@ export default function DashboardPage() {
                     <Button variant="outline" className="w-full justify-start text-left font-normal">
                       <CalendarDays className="mr-2 h-4 w-4"/>
                       {customStartDate
-                        ? format(customStartDate, "dd 'de' MMMM 'de' yyyy", { locale: es })
+                        ? format(toZonedTime(customStartDate, timezone), "dd 'de' MMMM 'de' yyyy", { locale: es })
                         : "Select date"}
                     </Button>
                   </PopoverTrigger>
@@ -586,7 +615,7 @@ export default function DashboardPage() {
                     <Button variant="outline" className="w-full justify-start text-left font-normal">
                       <CalendarDays className="mr-2 h-4 w-4"/>
                       {customEndDate
-                        ? format(customEndDate, "dd 'de' MMMM 'de' yyyy", { locale: es })
+                        ? format(toZonedTime(customEndDate, timezone), "dd 'de' MMMM 'de' yyyy", { locale: es })
                         : "Select date"}
                     </Button>
                   </PopoverTrigger>
@@ -615,7 +644,7 @@ export default function DashboardPage() {
                   <PopoverTrigger asChild>
                     <Button variant="outline" className="w-full justify-start text-left font-normal">
                       <CalendarDays className="mr-2 h-4 w-4"/>
-                      {specificDate ? formatDateToSpanish(specificDate) : "Select date"}
+                      {specificDate ? formatDateToSpanish(specificDate, timezone) : "Select date"}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
@@ -679,7 +708,7 @@ export default function DashboardPage() {
                 <Card className="p-4 bg-muted/50">
                   <div className="font-medium text-sm text-muted-foreground">Total Earned</div>
                   <div className="text-2xl font-bold">
-                    ${(totalAmount).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}
+                    ${(totalAmount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                 </Card>
               </div>
@@ -703,25 +732,25 @@ export default function DashboardPage() {
                   </TableHeader>
                   <TableBody>
                     {filteredTasks.map(task => (
-                      <TableRow key={task._id} className={task.selected ? "bg-muted/50":""}>
+                      <TableRow key={task._id} className={task.selected ? "bg-muted/50" : ""}>
                         {selectMode && (
                           <TableCell className="w-12">
                             <Checkbox
                               checked={task.selected}
                               onCheckedChange={() => toggleTaskSelection(task._id)}
-                              aria-label={`Select task ${task.descripcion||""}`}
+                              aria-label={`Select task ${task.descripcion || ""}`}
                             />
                           </TableCell>
                         )}
-                        <TableCell>{safeFormatDate(task.fecha)}</TableCell>
-                        <TableCell>{formatDuration(task.horas||0)}</TableCell>
+                        <TableCell>{safeFormatDate(task.fecha, timezone)}</TableCell>
+                        <TableCell>{formatDuration(task.horas || 0)}</TableCell>
                         <TableCell>
-                          ${(task.monto||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}
+                          ${(task.monto || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </TableCell>
-                        <TableCell className="max-w-xs truncate">{task.descripcion||""}</TableCell>
+                        <TableCell className="max-w-xs truncate">{task.descripcion || ""}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
-                            <Button variant="ghost" size="icon" onClick={()=>router.push(`/tasks/edit/${task._id}`)}>
+                            <Button variant="ghost" size="icon" onClick={() => router.push(`/tasks/edit/${task._id}`)}>
                               <Pencil className="h-4 w-4"/><span className="sr-only">Edit</span>
                             </Button>
                             <AlertDialog onOpenChange={(open) => { if (open) setTaskToDelete(task._id) }}>
@@ -785,5 +814,5 @@ export default function DashboardPage() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
-  )
+  );
 }

@@ -6,12 +6,12 @@ import { Button } from "@/components/ui/button"
 import { GoalCard } from "@/components/goal-card"
 import { useToast } from "@/hooks/use-toast"
 import { format } from "date-fns"
+import { zonedTimeToUtc, toZonedTime } from "date-fns-tz"
 
 // Ajusta un ISO-8601 al inicio de ese día en tu zona local
-function parseLocalDate(dateStr: string): Date {
-  const d = new Date(dateStr)
-  d.setMinutes(d.getMinutes() + d.getTimezoneOffset())
-  return d
+function parseLocalDate(dateStr: string, timezone: string): Date {
+  const utcDate = new Date(dateStr)
+  return toZonedTime(utcDate, timezone)
 }
 
 interface GoalDetail {
@@ -53,8 +53,24 @@ export default function GoalDetailPage() {
   const { toast } = useToast()
   const apiUrl = process.env.NEXT_PUBLIC_API_URL!
   const [goal, setGoal] = useState<GoalWithProgress | null>(null)
+  const [timezone, setTimezone] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [openId, setOpenId] = useState<string | null>(null)
+
+  const fetchUserTimezone = async () => {
+    try {
+      const token = localStorage.getItem("token")
+      const res = await fetch(`${apiUrl}/api/user/profile`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) throw new Error("Failed to fetch user")
+      const user = await res.json()
+      setTimezone(user.timezone || "UTC")
+    } catch (err) {
+      toast.error("Failed to fetch user timezone, defaulting to UTC")
+      setTimezone("UTC")
+    }
+  }
 
   async function fetchGoal() {
     setIsLoading(true)
@@ -101,11 +117,10 @@ export default function GoalDetailPage() {
   }
 
   useEffect(() => {
-    fetchGoal()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    fetchUserTimezone().then(() => fetchGoal())
   }, [id])
 
-  if (isLoading || !goal) return <p>Loading…</p>
+  if (isLoading || !goal || !timezone) return <p>Loading…</p>
 
   return (
     <div className="space-y-4 max-w-lg">
@@ -126,7 +141,7 @@ export default function GoalDetailPage() {
         openId={openId}
         setOpenId={setOpenId}
         deleteGoal={deleteGoal}
-        parseLocalDate={parseLocalDate}
+        parseLocalDate={(dateStr) => parseLocalDate(dateStr, timezone)}
       />
     </div>
   )

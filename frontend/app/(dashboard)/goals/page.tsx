@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 import { Plus } from "lucide-react"
 import { GoalCard } from "@/components/goal-card"
+import Link from "next/link"
 
 // Ajusta un ISO-8601 al inicio de ese día en tu zona local
 function parseLocalDate(dateStr: string): Date {
@@ -107,16 +108,21 @@ export default function GoalsListPage() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Goals</h1>
-        <Button onClick={() => router.push("/goals/new")}>
-          <Plus className="mr-2 h-4 w-4" /> Add Goal
-        </Button>
+        <h1 className="text-3xl font-bold">Active Goals</h1>
+        <div className="flex gap-2">
+          <Link href="/goals/history">
+            <Button variant="outline">View Goal History</Button>
+          </Link>
+          <Button onClick={() => router.push("/goals/new")}>
+            <Plus className="mr-2 h-4 w-4" /> Add Goal
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
         <p>Loading…</p>
       ) : goals.length === 0 ? (
-        <p>No goals yet.</p>
+        <p>No active goals yet.</p>
       ) : (
         <div className="grid gap-6 md:grid-cols-2">
           {goals.map((g) => (

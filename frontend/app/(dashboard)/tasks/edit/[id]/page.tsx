@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useEffect, useState } from "react"
 import { useRouter, useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -14,11 +13,13 @@ import { ArrowLeft, CalendarIcon, InfoIcon } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { format } from "date-fns"
 import { enUS } from "date-fns/locale"
+import { toZonedTime, fromZonedTime } from "date-fns-tz"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 
 interface UserProfile {
   hourlyRate: number
+  timezone: string
 }
 
 export default function EditTaskPage() {
@@ -72,6 +73,8 @@ export default function EditTaskPage() {
 
   // Load task data
   useEffect(() => {
+    if (!userProfile?.timezone) return;
+
     const fetchTask = async () => {
       const token = localStorage.getItem("token")
       try {
@@ -82,8 +85,8 @@ export default function EditTaskPage() {
           throw new Error("Failed to fetch task")
         }
         const data = await response.json()
-        // Convert received date to Date object
-        const taskDate = new Date(data.fecha)
+        // Convert received UTC date to user's timezone
+        const taskDate = toZonedTime(new Date(data.fecha), userProfile.timezone)
         setFecha(taskDate)
 
         // For normal time: use data.taskingHours if it exists; otherwise, data.horas
@@ -117,7 +120,7 @@ export default function EditTaskPage() {
     }
 
     fetchTask()
-  }, [taskId, router, toast, apiUrl])
+  }, [taskId, router, toast, apiUrl, userProfile])
 
   // Recalculate amount when times are modified (normal and exceeded)
   useEffect(() => {
@@ -133,9 +136,9 @@ export default function EditTaskPage() {
   // Function to handle date selection
   const handleDateSelect = (date: Date | undefined) => {
     setFecha(date)
-    if (date) {
+    if (date && userProfile?.timezone) {
       console.log("Selected date:", date)
-      console.log("Formatted date:", format(date, "yyyy-MM-dd"))
+      console.log("Formatted date in user's timezone:", format(fromZonedTime(date, userProfile.timezone), "yyyy-MM-dd"))
     }
   }
 
@@ -144,6 +147,10 @@ export default function EditTaskPage() {
     e.preventDefault()
     if (!userProfile?.hourlyRate) {
       toast.error("You must set your hourly rate in your profile")
+      return
+    }
+    if (!userProfile?.timezone) {
+      toast.error("User timezone not found")
       return
     }
     if (!fecha) {
@@ -155,7 +162,8 @@ export default function EditTaskPage() {
     // Calculate times in decimal format
     const normalTime = horas + minutos / 60 + segundos / 3600
     const exceedTime = exceedHoras + exceedMinutos / 60 + exceedSegundos / 3600
-    const formattedDate = format(fecha, "yyyy-MM-dd")
+    // Format the date as YYYY-MM-DD in the user's timezone
+    const formattedDate = format(fromZonedTime(fecha, userProfile.timezone), "yyyy-MM-dd")
     try {
       const response = await fetch(`${apiUrl}/api/tasks/${taskId}`, {
         method: "PUT",
@@ -376,4 +384,3 @@ export default function EditTaskPage() {
     </div>
   )
 }
-

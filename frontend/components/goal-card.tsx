@@ -43,10 +43,11 @@ interface GoalCardProps {
   openId: string | null
   setOpenId: (id: string | null) => void
   deleteGoal: (id: string) => void
-  parseLocalDate: (dateStr: string) => Date
+  parseLocalDate: (dateStr: string, timezone: string) => Date
+  timezone: string
 }
 
-export function GoalCard({ goal, openId, setOpenId, deleteGoal, parseLocalDate }: GoalCardProps) {
+export function GoalCard({ goal, openId, setOpenId, deleteGoal, parseLocalDate, timezone }: GoalCardProps) {
   // Use progress.achieved for consistency with displayed value
   const percent = goal.targetAmount > 0 
     ? Math.min(Math.round((goal.progress.achieved / goal.targetAmount) * 100), 100) 
@@ -86,10 +87,56 @@ export function GoalCard({ goal, openId, setOpenId, deleteGoal, parseLocalDate }
           <div>
             <CardTitle className="py-2">{goal.title}</CardTitle>
             <p className="text-sm text-muted-foreground">
-              {format(parseLocalDate(goal.startDate), "dd/MM/yyyy")} –{" "}
-              {format(parseLocalDate(goal.endDate), "dd/MM/yyyy")}
+              {format(parseLocalDate(goal.startDate, timezone), "dd/MM/yyyy")} –{" "}
+              {format(parseLocalDate(goal.endDate, timezone), "dd/MM/yyyy")}
             </p>
           </div>
+          {/* Delete Button */}
+          <AlertDialog open={openId === goal._id} onOpenChange={(open) => setOpenId(open ? goal._id : null)}>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={(e) => {
+                  e.stopPropagation(); // Prevent the click from bubbling to the Link
+                  e.preventDefault(); // Prevent default navigation
+                  setOpenId(goal._id);
+                }}
+              >
+                <Trash2 className="h-4 w-4" />
+                <span className="sr-only">Delete goal</span>
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete Goal</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Are you sure you want to delete the goal "{goal.title}"? This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel
+                  onClick={(e) => {
+                    e.stopPropagation(); // Prevent the click from bubbling to the Link
+                    e.preventDefault(); // Prevent default navigation
+                    setOpenId(null); // Explicitly close the dialog
+                  }}
+                >
+                  Cancel
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  onClick={(e) => {
+                    e.stopPropagation(); // Prevent the click from bubbling to the Link
+                    e.preventDefault(); // Prevent default navigation
+                    deleteGoal(goal._id);
+                  }}
+                >
+                  Delete
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </CardHeader>
 
         <CardContent className="space-y-3">

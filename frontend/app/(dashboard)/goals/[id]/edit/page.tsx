@@ -7,13 +7,14 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
 import { formatISO } from "date-fns"
+import { toZonedTime } from "date-fns-tz"
 import { GoalCard } from "@/components/goal-card"
 
 // Ajusta un ISO-8601 al inicio de ese día en tu zona local
-function parseLocalDate(dateStr: string): Date {
-  const d = new Date(dateStr)
-  d.setMinutes(d.getMinutes() + d.getTimezoneOffset())
-  return d
+function parseLocalDate(dateStr: string, timezone: string): Date {
+  // Convert the UTC date to the user's timezone
+  const utcDate = new Date(dateStr)
+  return toZonedTime(utcDate, timezone)
 }
 
 interface GoalDetail {
@@ -58,9 +59,25 @@ export default function EditGoalPage() {
   const [targetAmount, setTargetAmount] = useState(0)
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
+  const [timezone, setTimezone] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [openId, setOpenId] = useState<string | null>(null) // For delete dialog
+
+  const fetchUserTimezone = async () => {
+    try {
+      const token = localStorage.getItem("token")
+      const res = await fetch(`${apiUrl}/api/user/profile`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) throw new Error("Failed to fetch user")
+      const user = await res.json()
+      setTimezone(user.timezone || "UTC")
+    } catch (err) {
+      toast.error("Failed to fetch user timezone, defaulting to UTC")
+      setTimezone("UTC")
+    }
+  }
 
   const fetchGoal = async () => {
     setIsLoading(true)
@@ -78,23 +95,17 @@ export default function EditGoalPage() {
         currentAmount: g.progress.achieved,
         progress: {
           ...g.progress,
-          percent: Math.min(Math.round(parseFloat(g.progress.percent)), 100),
+          percent: g.progress.percent ? Math.min(Math.round(parseFloat(g.progress.percent)), 100) : 0,
         },
       }
 
       setGoal(transformedGoal)
 
-      // Ajustar fechas para compensar el offset antes de formatear
-      const sd = new Date(g.startDate)
-      sd.setMinutes(sd.getMinutes() + sd.getTimezoneOffset())
-      setStartDate(formatISO(sd, { representation: "date" }))
-
-      const ed = new Date(g.endDate)
-      ed.setMinutes(ed.getMinutes() + ed.getTimezoneOffset())
-      setEndDate(formatISO(ed, { representation: "date" }))
-
-      setTitle(g.title)
-      setTargetAmount(g.targetAmount)
+      // Initialize form fields with goal data
+      setTitle(transformedGoal.title)
+      setTargetAmount(transformedGoal.targetAmount)
+      setStartDate(formatISO(new Date(g.startDate), { representation: "date" }))
+      setEndDate(formatISO(new Date(g.endDate), { representation: "date" }))
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error")
     } finally {
@@ -142,10 +153,10 @@ export default function EditGoalPage() {
   }
 
   useEffect(() => {
-    fetchGoal()
+    fetchUserTimezone().then(() => fetchGoal())
   }, [id])
 
-  if (isLoading || !goal) return <p>Loading…</p>
+  if (isLoading || !goal || !timezone) return <p>Loading…</p>
 
   return (
     <div className="space-y-6 max-w-lg">
@@ -159,7 +170,7 @@ export default function EditGoalPage() {
         openId={openId}
         setOpenId={setOpenId}
         deleteGoal={deleteGoal}
-        parseLocalDate={parseLocalDate}
+        parseLocalDate={(dateStr) => parseLocalDate(dateStr, timezone)}
       />
 
       {/* Edit Form */}
