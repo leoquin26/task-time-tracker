@@ -33,14 +33,13 @@ interface GoalDetail {
 }
 
 export default function GoalDetailPage() {
-  const { id } = useParams()Q
+  const { id } = useParams()
   const router = useRouter()
   const apiUrl = process.env.NEXT_PUBLIC_API_URL!
   const [goal, setGoal] = useState<GoalDetail | null>(null)
   const [timezone, setTimezone] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const { toast } = useToast()
-Q
   const fetchUserTimezone = async () => {
     try {
       const token = localStorage.getItem("token")
