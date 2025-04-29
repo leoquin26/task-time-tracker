@@ -1,14 +1,13 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter, useParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { toast } from "sonner"
-import { formatISO } from "date-fns"
+import { ArrowLeft } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
+import { format } from "date-fns"
 import { toZonedTime } from "date-fns-tz"
-import { GoalCard } from "@/components/goal-card"
 
 // Ajusta un ISO-8601 al inicio de ese día en tu zona local
 function parseLocalDate(dateStr: string, timezone: string): Date {
@@ -33,41 +32,19 @@ interface GoalDetail {
   }
 }
 
-interface GoalWithProgress {
-  _id: string
-  title: string
-  targetAmount: number
-  currentAmount: number
-  startDate: string
-  endDate: string
-  progress: {
-    achieved: number
-    remaining: number
-    percent: number
-    days: number
-    dailyTarget: number
-    hoursPerDay: number
-  }
-}
-
-export default function EditGoalPage() {
-  const { id } = useParams()
+export default function GoalDetailPage() {
+  const { id } = useParams()Q
   const router = useRouter()
   const apiUrl = process.env.NEXT_PUBLIC_API_URL!
-  const [goal, setGoal] = useState<GoalWithProgress | null>(null)
-  const [title, setTitle] = useState("")
-  const [targetAmount, setTargetAmount] = useState(0)
-  const [startDate, setStartDate] = useState("")
-  const [endDate, setEndDate] = useState("")
+  const [goal, setGoal] = useState<GoalDetail | null>(null)
   const [timezone, setTimezone] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [openId, setOpenId] = useState<string | null>(null) // For delete dialog
-
+  const { toast } = useToast()
+Q
   const fetchUserTimezone = async () => {
     try {
       const token = localStorage.getItem("token")
-      const res = await fetch(`${apiUrl}/api/user/profile`, { // Fixed endpoint to match backend
+      const res = await fetch(`${apiUrl}/api/user/profile`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       if (!res.ok) throw new Error("Failed to fetch user")
@@ -87,68 +64,12 @@ export default function EditGoalPage() {
         headers: { Authorization: `Bearer ${token}` },
       })
       if (!res.ok) throw new Error("Failed to load goal")
-      const g: GoalDetail = await res.json()
-
-      // Transform GoalDetail into GoalWithProgress
-      const transformedGoal: GoalWithProgress = {
-        ...g,
-        currentAmount: g.progress.achieved,
-        progress: {
-          ...g.progress,
-          percent: g.progress.percent ? Math.min(Math.round(parseFloat(g.progress.percent)), 100) : 0,
-        },
-      }
-
-      setGoal(transformedGoal)
-
-      // Initialize form fields with goal data
-      setTitle(transformedGoal.title)
-      setTargetAmount(transformedGoal.targetAmount)
-      setStartDate(formatISO(new Date(g.startDate), { representation: "date" }))
-      setEndDate(formatISO(new Date(g.endDate), { representation: "date" }))
+      const data: GoalDetail = await res.json()
+      setGoal(data)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error")
     } finally {
       setIsLoading(false)
-    }
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsSubmitting(true)
-    try {
-      const token = localStorage.getItem("token")
-      const res = await fetch(`${apiUrl}/api/goals/${id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ title, targetAmount, startDate, endDate }),
-      })
-      if (!res.ok) throw new Error("Failed to update goal")
-      toast.success("Goal updated")
-      router.push(`/goals/${id}`)
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Error")
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  const deleteGoal = async (id: string) => {
-    try {
-      const token = localStorage.getItem("token")
-      const res = await fetch(`${apiUrl}/api/goals/${id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      if (!res.ok) throw new Error("Failed to delete goal")
-      toast.success("Goal deleted")
-      setOpenId(null)
-      router.push("/goals")
-    } catch (err) {
-      toast.error((err as Error).message || "Error deleting goal")
     }
   }
 
@@ -159,66 +80,54 @@ export default function EditGoalPage() {
   if (isLoading || !goal || !timezone) return <p>Loading…</p>
 
   return (
-    <div className="space-y-6 max-w-lg">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Edit Goal: {goal.title}</h1>
+    <div className="space-y-6">
+      <div className="flex items-center">
+        <Button variant="ghost" onClick={() => router.back()} className="mr-2">
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
+        <h1 className="text-3xl font-bold tracking-tight">{goal.title}</h1>
       </div>
 
-      {/* Display Current Goal Details Using GoalCard */}
-      <GoalCard
-        goal={goal}
-        openId={openId}
-        setOpenId={setOpenId}
-        deleteGoal={deleteGoal}
-        parseLocalDate={(dateStr) => parseLocalDate(dateStr, timezone)}
-        timezone={timezone}
-      />
+      <Card className="relative">
+        <CardHeader className="flex justify-between items-start">
+          <div>
+            <CardTitle className="py-2">{goal.title}</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              {format(parseLocalDate(goal.startDate, timezone), "dd/MM/yyyy")} –{" "}
+              {format(parseLocalDate(goal.endDate, timezone), "dd/MM/yyyy")}
+            </p>
+          </div>
 
-      {/* Edit Form */}
-      <form className="space-y-4" onSubmit={handleSubmit}>
-        <h2 className="text-xl font-semibold">Update Goal Details</h2>
-        <div>
-          <Label className="p-2">Title</Label>
-          <Input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            required
-          />
-        </div>
-        <div>
-          <Label className="p-2">Target Amount ($)</Label>
-          <Input
-            type="number"
-            step="0.01"
-            value={targetAmount}
-            onChange={(e) => setTargetAmount(parseFloat(e.target.value))}
-            required
-          />
-        </div>
-        <div className="flex gap-4">
-          <div>
-            <Label className="p-2">Start Date</Label>
-            <Input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              required
-            />
+          <Button variant="outline" onClick={() => router.push(`/goals/${id}/edit`)}>
+            Edit Goal
+          </Button>
+        </CardHeader>
+
+        <CardContent className="space-y-3">
+          <div className="flex justify-between text-sm font-medium">
+            <span>${goal.progress.achieved.toFixed(2)}</span>
+            <span>${goal.targetAmount.toFixed(2)}</span>
           </div>
-          <div>
-            <Label className="p-2">End Date</Label>
-            <Input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              required
-            />
+
+          <div className="relative">
+            <div className="h-3 bg-muted rounded-full overflow-hidden">
+              <div
+                className="h-full bg-green-500 rounded-full"
+                style={{ width: `${goal.progress.percent}%` }}
+              />
+            </div>
           </div>
-        </div>
-        <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? "Saving…" : "Save Changes"}
-        </Button>
-      </form>
+
+          <p className="text-sm text-muted-foreground">
+            {goal.progress.days} days remaining • ~$
+            {goal.progress.dailyTarget.toFixed(2)} per day
+          </p>
+
+          <p className="text-sm text-muted-foreground">
+            ~{goal.progress.hoursPerDay.toFixed(2)} hours per day
+          </p>
+        </CardContent>
+      </Card>
     </div>
   )
 }
