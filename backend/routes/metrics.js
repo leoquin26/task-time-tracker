@@ -14,19 +14,19 @@ function getDateRange(period, referenceDate = new Date()) {
   let start, end;
   switch (period) {
     case 'daily':
-      start = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+      start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
       end = new Date(start);
       end.setUTCDate(end.getUTCDate() + 1);
       break;
     case 'weekly':
       const dayOfWeek = now.getUTCDay();
-      start = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek));
+      start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - dayOfWeek));
       end = new Date(start);
       end.setUTCDate(end.getUTCDate() + 7);
       break;
     case 'monthly':
-      start = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
-      end = new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1, 1));
+      start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+      end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
       break;
     default:
       start = new Date();
@@ -301,8 +301,11 @@ router.get('/historical', authMiddleware, async (req, res) => {
     const today = new Date();
     const metrics = [];
 
+    // Ensure we don't include future dates
+    const currentDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+
     for (let i = 0; i < periodsBack; i++) {
-      const refDate = new Date(today);
+      const refDate = new Date(currentDate);
       if (period === 'daily') {
         refDate.setUTCDate(refDate.getUTCDate() - i);
       } else if (period === 'weekly') {
@@ -310,6 +313,9 @@ router.get('/historical', authMiddleware, async (req, res) => {
       } else if (period === 'monthly') {
         refDate.setUTCMonth(refDate.getUTCMonth() - i);
       }
+
+      // Skip if the reference date is in the future
+      if (refDate > currentDate) continue;
 
       const { start, end } = getDateRange(period, refDate);
       const periodMetrics = await fetchTaskMetrics(req.user.id, start, end);
