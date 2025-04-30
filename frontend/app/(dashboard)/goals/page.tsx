@@ -132,8 +132,7 @@ export default function GoalsListPage() {
               openId={openId}
               setOpenId={setOpenId}
               deleteGoal={deleteGoal}
-              parseLocalDate={parseLocalDate}
-            />
+              parseLocalDate={parseLocalDate} timezone={""}            />
           ))}
         </div>
       )}
