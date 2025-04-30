@@ -509,8 +509,7 @@ export default function DashboardPage() {
                 openId={openId}
                 setOpenId={setOpenId}
                 deleteGoal={deleteGoal}
-                parseLocalDate={(dateStr) => parseLocalDate(dateStr, timezone)}
-              />
+                parseLocalDate={(dateStr) => parseLocalDate(dateStr, timezone)} timezone={""}              />
             ))}
           </div>
         )}
