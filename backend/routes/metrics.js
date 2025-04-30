@@ -3,12 +3,10 @@ const router = express.Router();
 const mongoose = require('mongoose');
 const Task = require('../models/Task');
 const Goal = require('../models/Goal');
+const User = require('../models/User'); // Import the User model
 const authMiddleware = require('../middleware/authMiddleware');
 const { format, startOfDay, endOfDay, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth } = require('date-fns');
 const { zonedTimeToUtc, utcToZonedTime } = require('date-fns-tz');
-
-// Ensure API_URL is defined
-const API_URL = process.env.API_URL || 'http://localhost:3000'; // Fallback to localhost for development
 
 /**
  * Función auxiliar para obtener el rango de fechas según el período en la zona horaria del usuario.
@@ -158,13 +156,10 @@ function calculateProductivity(earnings, goalTarget, daysInPeriod, historicalAvg
 router.get('/daily', authMiddleware, async (req, res) => {
   try {
     const today = new Date();
-    // Fetch the user's timezone from their profile
-    const userProfile = await fetch(`${API_URL}/api/users/profile`, {
-      headers: { Authorization: `Bearer ${req.user.token}` },
-    });
-    if (!userProfile.ok) throw new Error("Failed to fetch user profile");
-    const userData = await userProfile.json();
-    const userTimezone = userData.timezone || 'UTC';
+    // Fetch the user's timezone directly from the database
+    const user = await User.findById(req.user.id).select('timezone');
+    if (!user) throw new Error("User not found");
+    const userTimezone = user.timezone || 'UTC';
 
     const { start, end } = getDateRange('daily', today, userTimezone);
 
@@ -228,13 +223,10 @@ router.get('/daily', authMiddleware, async (req, res) => {
 router.get('/weekly', authMiddleware, async (req, res) => {
   try {
     const today = new Date();
-    // Fetch the user's timezone from their profile
-    const userProfile = await fetch(`${API_URL}/api/users/profile`, {
-      headers: { Authorization: `Bearer ${req.user.token}` },
-    });
-    if (!userProfile.ok) throw new Error("Failed to fetch user profile");
-    const userData = await userProfile.json();
-    const userTimezone = userData.timezone || 'UTC';
+    // Fetch the user's timezone directly from the database
+    const user = await User.findById(req.user.id).select('timezone');
+    if (!user) throw new Error("User not found");
+    const userTimezone = user.timezone || 'UTC';
 
     const { start, end } = getDateRange('weekly', today, userTimezone);
 
@@ -302,13 +294,10 @@ router.get('/weekly', authMiddleware, async (req, res) => {
 router.get('/monthly', authMiddleware, async (req, res) => {
   try {
     const today = new Date();
-    // Fetch the user's timezone from their profile
-    const userProfile = await fetch(`${API_URL}/api/users/profile`, {
-      headers: { Authorization: `Bearer ${req.user.token}` },
-    });
-    if (!userProfile.ok) throw new Error("Failed to fetch user profile");
-    const userData = await userProfile.json();
-    const userTimezone = userData.timezone || 'UTC';
+    // Fetch the user's timezone directly from the database
+    const user = await User.findById(req.user.id).select('timezone');
+    if (!user) throw new Error("User not found");
+    const userTimezone = user.timezone || 'UTC';
 
     const { start, end } = getDateRange('monthly', today, userTimezone);
 
@@ -379,13 +368,10 @@ router.get('/historical', authMiddleware, async (req, res) => {
     const periodsBack = parseInt(req.query.periodsBack) || 5;
 
     const today = new Date();
-    // Fetch the user's timezone from their profile
-    const userProfile = await fetch(`${API_URL}/api/users/profile`, {
-      headers: { Authorization: `Bearer ${req.user.token}` },
-    });
-    if (!userProfile.ok) throw new Error("Failed to fetch user profile");
-    const userData = await userProfile.json();
-    const userTimezone = userData.timezone || 'UTC';
+    // Fetch the user's timezone directly from the database
+    const user = await User.findById(req.user.id).select('timezone');
+    if (!user) throw new Error("User not found");
+    const userTimezone = user.timezone || 'UTC';
 
     const metrics = [];
     const currentDate = utcToZonedTime(today, userTimezone);
