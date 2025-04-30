@@ -6,7 +6,41 @@ const Goal = require('../models/Goal');
 const User = require('../models/User');
 const authMiddleware = require('../middleware/authMiddleware');
 const { format, startOfDay, endOfDay, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth } = require('date-fns');
-const { utcToZonedTime, zonedTimeToUtc } = require('date-fns-tz');
+
+// Attempt to import date-fns-tz functions
+let utcToZonedTime, zonedTimeToUtc;
+try {
+  const dateFnsTz = require('date-fns-tz');
+  utcToZonedTime = dateFnsTz.utcToZonedTime;
+  zonedTimeToUtc = dateFnsTz.zonedTimeToUtc;
+} catch (err) {
+  console.error('Failed to import date-fns-tz functions:', err.message);
+  // Fallback to basic timezone handling using offsets
+  utcToZonedTime = (date, timezone) => {
+    // If timezone is an offset (e.g., '-05:00'), convert to milliseconds
+    const offsetMatch = timezone.match(/^([+-])(\d{2}):(\d{2})$/);
+    if (offsetMatch) {
+      const sign = offsetMatch[1] === '+' ? 1 : -1;
+      const hours = parseInt(offsetMatch[2], 10);
+      const minutes = parseInt(offsetMatch[3], 10);
+      const offsetMs = sign * (hours * 60 + minutes) * 60 * 1000;
+      return new Date(date.getTime() + offsetMs);
+    }
+    return date; // Fallback to UTC if timezone is invalid
+  };
+  zonedTimeToUtc = (date, timezone) => {
+    // Reverse the offset to convert back to UTC
+    const offsetMatch = timezone.match(/^([+-])(\d{2}):(\d{2})$/);
+    if (offsetMatch) {
+      const sign = offsetMatch[1] === '+' ? 1 : -1;
+      const hours = parseInt(offsetMatch[2], 10);
+      const minutes = parseInt(offsetMatch[3], 10);
+      const offsetMs = sign * (hours * 60 + minutes) * 60 * 1000;
+      return new Date(date.getTime() - offsetMs);
+    }
+    return date; // Fallback to UTC if timezone is invalid
+  };
+}
 
 /**
  * Función auxiliar para obtener el rango de fechas según el período en la zona horaria del usuario.
