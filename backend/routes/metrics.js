@@ -156,7 +156,7 @@ router.get('/daily', authMiddleware, async (req, res) => {
   try {
     const today = new Date();
     // Fetch the user's timezone from their profile
-    const userProfile = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/profile`, {
+    const userProfile = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/user/profile`, {
       headers: { Authorization: `Bearer ${req.user.token}` },
     });
     if (!userProfile.ok) throw new Error("Failed to fetch user profile");
@@ -226,7 +226,7 @@ router.get('/weekly', authMiddleware, async (req, res) => {
   try {
     const today = new Date();
     // Fetch the user's timezone from their profile
-    const userProfile = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/profile`, {
+    const userProfile = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/user/profile`, {
       headers: { Authorization: `Bearer ${req.user.token}` },
     });
     if (!userProfile.ok) throw new Error("Failed to fetch user profile");
@@ -300,7 +300,7 @@ router.get('/monthly', authMiddleware, async (req, res) => {
   try {
     const today = new Date();
     // Fetch the user's timezone from their profile
-    const userProfile = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/profile`, {
+    const userProfile = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/user/profile`, {
       headers: { Authorization: `Bearer ${req.user.token}` },
     });
     if (!userProfile.ok) throw new Error("Failed to fetch user profile");
@@ -377,7 +377,7 @@ router.get('/historical', authMiddleware, async (req, res) => {
 
     const today = new Date();
     // Fetch the user's timezone from their profile
-    const userProfile = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/profile`, {
+    const userProfile = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/user/profile`, {
       headers: { Authorization: `Bearer ${req.user.token}` },
     });
     if (!userProfile.ok) throw new Error("Failed to fetch user profile");
