@@ -3,10 +3,10 @@ const router = express.Router();
 const mongoose = require('mongoose');
 const Task = require('../models/Task');
 const Goal = require('../models/Goal');
-const User = require('../models/User'); // Import the User model
+const User = require('../models/User');
 const authMiddleware = require('../middleware/authMiddleware');
 const { format, startOfDay, endOfDay, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth } = require('date-fns');
-const { zonedTimeToUtc, utcToZonedTime } = require('date-fns-tz');
+const { utcToZonedTime, zonedTimeToUtc } = require('date-fns-tz');
 
 /**
  * Función auxiliar para obtener el rango de fechas según el período en la zona horaria del usuario.
