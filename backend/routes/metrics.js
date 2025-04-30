@@ -7,47 +7,43 @@ const User = require('../models/User');
 const authMiddleware = require('../middleware/authMiddleware');
 const { format, startOfDay, endOfDay, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth } = require('date-fns');
 
-// Attempt to import date-fns-tz functions
-let utcToZonedTime, zonedTimeToUtc;
-try {
-  const dateFnsTz = require('date-fns-tz');
-  utcToZonedTime = dateFnsTz.toZonedTime;
-  zonedTimeToUtc = dateFnsTz.zonedTimeToUtc;
-} catch (err) {
-  console.error('Failed to import date-fns-tz functions:', err.message);
-  // Fallback to basic timezone handling using offsets
-  utcToZonedTime = (date, timezone) => {
-    // If timezone is an offset (e.g., '-05:00'), convert to milliseconds
-    const offsetMatch = timezone.match(/^([+-])(\d{2}):(\d{2})$/);
-    if (offsetMatch) {
-      const sign = offsetMatch[1] === '+' ? 1 : -1;
-      const hours = parseInt(offsetMatch[2], 10);
-      const minutes = parseInt(offsetMatch[3], 10);
-      const offsetMs = sign * (hours * 60 + minutes) * 60 * 1000;
-      return new Date(date.getTime() + offsetMs);
-    }
-    return date; // Fallback to UTC if timezone is invalid
+/**
+ * Convert IANA timezone to offset (e.g., 'America/Lima' to '-05:00').
+ * This is a simplified mapping for common timezones; in a production app, you'd use a library like `moment-timezone` or `Intl.DateTimeFormat`.
+ */
+function getTimezoneOffset(timezone) {
+  // Simplified mapping for common timezones (not DST-aware)
+  const timezoneOffsets = {
+    'America/Lima': '-05:00', // Peru Time (PET)
+    'UTC': '+00:00',
+    'America/New_York': '-05:00', // EST (not DST-aware for simplicity)
+    'Europe/Paris': '+01:00', // CET (not DST-aware for simplicity)
+    'Asia/Tokyo': '+09:00', // JST
+    // Add more mappings as needed
   };
-  zonedTimeToUtc = (date, timezone) => {
-    // Reverse the offset to convert back to UTC
-    const offsetMatch = timezone.match(/^([+-])(\d{2}):(\d{2})$/);
-    if (offsetMatch) {
-      const sign = offsetMatch[1] === '+' ? 1 : -1;
-      const hours = parseInt(offsetMatch[2], 10);
-      const minutes = parseInt(offsetMatch[3], 10);
-      const offsetMs = sign * (hours * 60 + minutes) * 60 * 1000;
-      return new Date(date.getTime() - offsetMs);
-    }
-    return date; // Fallback to UTC if timezone is invalid
-  };
+
+  return timezoneOffsets[timezone] || '+00:00'; // Default to UTC if timezone not found
 }
 
 /**
  * Función auxiliar para obtener el rango de fechas según el período en la zona horaria del usuario.
  */
 function getDateRange(period, referenceDate = new Date(), timezone = 'UTC') {
+  // Get the timezone offset (e.g., '-05:00')
+  const offset = getTimezoneOffset(timezone);
+
+  // Parse the offset (e.g., '-05:00' to milliseconds)
+  const offsetMatch = offset.match(/^([+-])(\d{2}):(\d{2})$/);
+  if (!offsetMatch) {
+    throw new Error(`Invalid timezone offset: ${offset}`);
+  }
+  const sign = offsetMatch[1] === '+' ? 1 : -1;
+  const hours = parseInt(offsetMatch[2], 10);
+  const minutes = parseInt(offsetMatch[3], 10);
+  const offsetMs = sign * (hours * 60 + minutes) * 60 * 1000;
+
   // Convert the reference date to the user's timezone
-  const zonedDate = utcToZonedTime(referenceDate, timezone);
+  const zonedDate = new Date(referenceDate.getTime() + offsetMs);
   let start, end;
 
   switch (period) {
@@ -69,8 +65,8 @@ function getDateRange(period, referenceDate = new Date(), timezone = 'UTC') {
   }
 
   // Convert back to UTC for database queries
-  start = zonedTimeToUtc(start, timezone);
-  end = zonedTimeToUtc(end, timezone);
+  start = new Date(start.getTime() - offsetMs);
+  end = new Date(end.getTime() - offsetMs);
 
   return { start, end };
 }
@@ -408,8 +404,8 @@ router.get('/historical', authMiddleware, async (req, res) => {
     const userTimezone = user.timezone || 'UTC';
 
     const metrics = [];
-    const currentDate = utcToZonedTime(today, userTimezone);
-    const currentDateUTC = zonedTimeToUtc(startOfDay(currentDate), userTimezone);
+    const currentDate = new Date(today.getTime());
+    const currentDateStart = startOfDay(currentDate);
 
     for (let i = 0; i < periodsBack; i++) {
       const refDate = new Date(currentDate);
@@ -422,8 +418,8 @@ router.get('/historical', authMiddleware, async (req, res) => {
       }
 
       // Skip if the reference date is in the future
-      const refDateStart = zonedTimeToUtc(startOfDay(refDate), userTimezone);
-      if (refDateStart > currentDateUTC) continue;
+      const refDateStart = startOfDay(refDate);
+      if (refDateStart > currentDateStart) continue;
 
       const { start, end } = getDateRange(period, refDate, userTimezone);
       const periodMetrics = await fetchTaskMetrics(req.user.id, start, end);
