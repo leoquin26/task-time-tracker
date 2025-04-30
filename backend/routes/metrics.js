@@ -11,7 +11,7 @@ const { format, startOfDay, endOfDay, subDays, startOfWeek, endOfWeek, startOfMo
 let utcToZonedTime, zonedTimeToUtc;
 try {
   const dateFnsTz = require('date-fns-tz');
-  utcToZonedTime = dateFnsTz.utcToZonedTime;
+  utcToZonedTime = dateFnsTz.toZonedTime;
   zonedTimeToUtc = dateFnsTz.zonedTimeToUtc;
 } catch (err) {
   console.error('Failed to import date-fns-tz functions:', err.message);
