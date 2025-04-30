@@ -7,6 +7,9 @@ const authMiddleware = require('../middleware/authMiddleware');
 const { format, startOfDay, endOfDay, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth } = require('date-fns');
 const { zonedTimeToUtc, utcToZonedTime } = require('date-fns-tz');
 
+// Ensure API_URL is defined
+const API_URL = process.env.API_URL || 'http://localhost:3000'; // Fallback to localhost for development
+
 /**
  * Función auxiliar para obtener el rango de fechas según el período en la zona horaria del usuario.
  */
@@ -156,7 +159,7 @@ router.get('/daily', authMiddleware, async (req, res) => {
   try {
     const today = new Date();
     // Fetch the user's timezone from their profile
-    const userProfile = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/user/profile`, {
+    const userProfile = await fetch(`${API_URL}/api/users/profile`, {
       headers: { Authorization: `Bearer ${req.user.token}` },
     });
     if (!userProfile.ok) throw new Error("Failed to fetch user profile");
@@ -226,7 +229,7 @@ router.get('/weekly', authMiddleware, async (req, res) => {
   try {
     const today = new Date();
     // Fetch the user's timezone from their profile
-    const userProfile = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/user/profile`, {
+    const userProfile = await fetch(`${API_URL}/api/users/profile`, {
       headers: { Authorization: `Bearer ${req.user.token}` },
     });
     if (!userProfile.ok) throw new Error("Failed to fetch user profile");
@@ -300,7 +303,7 @@ router.get('/monthly', authMiddleware, async (req, res) => {
   try {
     const today = new Date();
     // Fetch the user's timezone from their profile
-    const userProfile = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/user/profile`, {
+    const userProfile = await fetch(`${API_URL}/api/users/profile`, {
       headers: { Authorization: `Bearer ${req.user.token}` },
     });
     if (!userProfile.ok) throw new Error("Failed to fetch user profile");
@@ -377,7 +380,7 @@ router.get('/historical', authMiddleware, async (req, res) => {
 
     const today = new Date();
     // Fetch the user's timezone from their profile
-    const userProfile = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/user/profile`, {
+    const userProfile = await fetch(`${API_URL}/api/users/profile`, {
       headers: { Authorization: `Bearer ${req.user.token}` },
     });
     if (!userProfile.ok) throw new Error("Failed to fetch user profile");
