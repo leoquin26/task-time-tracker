@@ -1,12 +1,11 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter, useParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { GoalCard } from "@/components/goal-card"
 import { useToast } from "@/hooks/use-toast"
-import { format } from "date-fns"
-import { zonedTimeToUtc, toZonedTime } from "date-fns-tz"
+import { toZonedTime } from "date-fns-tz"
 
 // Ajusta un ISO-8601 al inicio de ese día en tu zona local
 function parseLocalDate(dateStr: string, timezone: string): Date {
@@ -141,8 +140,7 @@ export default function GoalDetailPage() {
         openId={openId}
         setOpenId={setOpenId}
         deleteGoal={deleteGoal}
-        parseLocalDate={(dateStr) => parseLocalDate(dateStr, timezone)}
-      />
+        parseLocalDate={(dateStr) => parseLocalDate(dateStr, timezone)} timezone={""}      />
     </div>
   )
 }
