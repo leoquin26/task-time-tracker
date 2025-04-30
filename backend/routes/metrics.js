@@ -39,74 +39,89 @@ function getDateRange(period, referenceDate = new Date()) {
  * Fetch tasks within a date range and aggregate metrics.
  */
 async function fetchTaskMetrics(userId, start, end) {
-  const metrics = await Task.aggregate([
-    {
-      $match: {
-        userId: new mongoose.Types.ObjectId(userId),
-        fecha: { $gte: start, $lt: end }
+  try {
+    const metrics = await Task.aggregate([
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(userId),
+          fecha: { $gte: start, $lt: end }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalHoras: { $sum: "$horas" },
+          totalTareas: { $sum: 1 },
+          totalMonto: { $sum: "$monto" }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          totalHoras: { $round: ["$totalHoras", 6] },
+          totalTareas: 1,
+          totalMonto: { $round: ["$totalMonto", 2] }
+        }
       }
-    },
-    {
-      $group: {
-        _id: null,
-        totalHoras: { $sum: "$horas" },
-        totalTareas: { $sum: 1 },
-        totalMonto: { $sum: "$monto" }
-      }
-    },
-    {
-      $project: {
-        _id: 0,
-        totalHoras: { $round: ["$totalHoras", 6] },
-        totalTareas: 1,
-        totalMonto: { $round: ["$totalMonto", 2] }
-      }
-    }
-  ]);
-  return metrics[0] || { totalHoras: 0, totalTareas: 0, totalMonto: 0 };
+    ]);
+    return metrics[0] || { totalHoras: 0, totalTareas: 0, totalMonto: 0 };
+  } catch (err) {
+    console.error('Error fetching task metrics:', err.message);
+    return { totalHoras: 0, totalTareas: 0, totalMonto: 0 };
+  }
 }
 
 /**
  * Fetch historical task count to calculate average tasks per day.
  */
 async function fetchHistoricalTaskCount(userId, end) {
-  const metrics = await Task.aggregate([
-    {
-      $match: {
-        userId: new mongoose.Types.ObjectId(userId),
-        fecha: { $lt: end }
+  try {
+    const metrics = await Task.aggregate([
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(userId),
+          fecha: { $lt: end }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalTareas: { $sum: 1 },
+          days: { $addToSet: { $dateToString: { format: "%Y-%m-%d", date: "$fecha" } } }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          totalTareas: 1,
+          uniqueDays: { $size: "$days" }
+        }
       }
-    },
-    {
-      $group: {
-        _id: null,
-        totalTareas: { $sum: 1 },
-        days: { $addToSet: { $dateToString: { format: "%Y-%m-%d", date: "$fecha" } } }
-      }
-    },
-    {
-      $project: {
-        _id: 0,
-        totalTareas: 1,
-        uniqueDays: { $size: "$days" }
-      }
-    }
-  ]);
-  return metrics[0] || { totalTareas: 0, uniqueDays: 1 };
+    ]);
+    return metrics[0] || { totalTareas: 0, uniqueDays: 1 };
+  } catch (err) {
+    console.error('Error fetching historical task count:', err.message);
+    return { totalTareas: 0, uniqueDays: 1 };
+  }
 }
 
 /**
  * Fetch goals within a date range.
  */
 async function fetchGoals(userId, start, end) {
-  return await Goal.find({
-    userId: new mongoose.Types.ObjectId(userId),
-    $or: [
-      { startDate: { $lte: end }, endDate: { $gte: start } },
-      { startDate: { $gte: start, $lte: end } },
-      { endDate: { $gte: start, $lte: end } }
-    ]
-  });
+  try {
+    return await Goal.find({
+      userId: new mongoose.Types.ObjectId(userId),
+      $or: [
+        { startDate: { $lte: end }, endDate: { $gte: start } },
+        { startDate: { $gte: start, $lte: end } },
+        { endDate: { $gte: start, $lte: end } }
+      ]
+    });
+  } catch (err) {
+    console.error('Error fetching goals:', err.message);
+    return [];
+  }
 }
 
 /**
@@ -175,7 +190,7 @@ router.get('/daily', authMiddleware, async (req, res) => {
       previousPeriod: yesterdayMetrics.totalMonto
     });
   } catch (err) {
-    console.error(err.message);
+    console.error('Error in /daily endpoint:', err.message);
     res.status(500).send('Server error');
   }
 });
@@ -231,7 +246,7 @@ router.get('/weekly', authMiddleware, async (req, res) => {
       previousPeriod: lastWeekMetrics.totalMonto
     });
   } catch (err) {
-    console.error(err.message);
+    console.error('Error in /weekly endpoint:', err.message);
     res.status(500).send('Server error');
   }
 });
@@ -287,7 +302,7 @@ router.get('/monthly', authMiddleware, async (req, res) => {
       previousPeriod: lastMonthMetrics.totalMonto
     });
   } catch (err) {
-    console.error(err.message);
+    console.error('Error in /monthly endpoint:', err.message);
     res.status(500).send('Server error');
   }
 });
@@ -334,7 +349,7 @@ router.get('/historical', authMiddleware, async (req, res) => {
 
     res.json(metrics.reverse());
   } catch (err) {
-    console.error(err.message);
+    console.error('Error in /historical endpoint:', err.message);
     res.status(500).send('Server error');
   }
 });
