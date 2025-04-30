@@ -102,7 +102,7 @@ export default function DashboardPage() {
   const fetchUserTimezone = async () => {
     try {
       const token = localStorage.getItem("token")
-      const res = await fetch(`${apiUrl}/api/users/profile`, {
+      const res = await fetch(`${apiUrl}/api/user/profile`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       if (!res.ok) throw new Error("Failed to fetch user")
