@@ -4,34 +4,39 @@ const mongoose = require('mongoose');
 const Task = require('../models/Task');
 const Goal = require('../models/Goal');
 const authMiddleware = require('../middleware/authMiddleware');
-const { format } = require('date-fns');
+const { format, startOfDay, endOfDay, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth } = require('date-fns');
+const { zonedTimeToUtc, utcToZonedTime } = require('date-fns-tz');
 
 /**
- * Función auxiliar para obtener el rango de fechas según el período utilizando UTC.
+ * Función auxiliar para obtener el rango de fechas según el período en la zona horaria del usuario.
  */
-function getDateRange(period, referenceDate = new Date()) {
-  const now = new Date(referenceDate);
+function getDateRange(period, referenceDate = new Date(), timezone = 'UTC') {
+  // Convert the reference date to the user's timezone
+  const zonedDate = utcToZonedTime(referenceDate, timezone);
   let start, end;
+
   switch (period) {
     case 'daily':
-      start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-      end = new Date(start);
-      end.setUTCDate(end.getUTCDate() + 1);
+      start = startOfDay(zonedDate);
+      end = endOfDay(zonedDate);
       break;
     case 'weekly':
-      const dayOfWeek = now.getUTCDay();
-      start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - dayOfWeek));
-      end = new Date(start);
-      end.setUTCDate(end.getUTCDate() + 7);
+      start = startOfWeek(zonedDate, { weekStartsOn: 0 }); // Sunday as start of week
+      end = endOfWeek(zonedDate, { weekStartsOn: 0 });
       break;
     case 'monthly':
-      start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-      end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+      start = startOfMonth(zonedDate);
+      end = endOfMonth(zonedDate);
       break;
     default:
       start = new Date();
       end = new Date();
   }
+
+  // Convert back to UTC for database queries
+  start = zonedTimeToUtc(start, timezone);
+  end = zonedTimeToUtc(end, timezone);
+
   return { start, end };
 }
 
@@ -150,20 +155,26 @@ function calculateProductivity(earnings, goalTarget, daysInPeriod, historicalAvg
 router.get('/daily', authMiddleware, async (req, res) => {
   try {
     const today = new Date();
-    const { start, end } = getDateRange('daily', today);
+    // Fetch the user's timezone from their profile
+    const userProfile = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/profile`, {
+      headers: { Authorization: `Bearer ${req.user.token}` },
+    });
+    if (!userProfile.ok) throw new Error("Failed to fetch user profile");
+    const userData = await userProfile.json();
+    const userTimezone = userData.timezone || 'UTC';
+
+    const { start, end } = getDateRange('daily', today, userTimezone);
 
     // Fetch today's metrics
     const todayMetrics = await fetchTaskMetrics(req.user.id, start, end);
 
     // Fetch yesterday's metrics for comparison
-    const yesterdayStart = new Date(start);
-    yesterdayStart.setUTCDate(yesterdayStart.getUTCDate() - 1);
-    const yesterdayEnd = new Date(start);
+    const yesterdayStart = subDays(start, 1);
+    const yesterdayEnd = subDays(end, 1);
     const yesterdayMetrics = await fetchTaskMetrics(req.user.id, yesterdayStart, yesterdayEnd);
 
     // Fetch historical metrics for the last 30 days to calculate averages
-    const historicalStart = new Date(today);
-    historicalStart.setUTCDate(historicalStart.getUTCDate() - 30);
+    const historicalStart = subDays(today, 30);
     const historicalMetrics = await fetchHistoricalMetrics(req.user.id, historicalStart, end);
 
     // Calculate averages based on historical data
@@ -214,20 +225,26 @@ router.get('/daily', authMiddleware, async (req, res) => {
 router.get('/weekly', authMiddleware, async (req, res) => {
   try {
     const today = new Date();
-    const { start, end } = getDateRange('weekly', today);
+    // Fetch the user's timezone from their profile
+    const userProfile = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/profile`, {
+      headers: { Authorization: `Bearer ${req.user.token}` },
+    });
+    if (!userProfile.ok) throw new Error("Failed to fetch user profile");
+    const userData = await userProfile.json();
+    const userTimezone = userData.timezone || 'UTC';
+
+    const { start, end } = getDateRange('weekly', today, userTimezone);
 
     // Fetch this week's metrics
     const thisWeekMetrics = await fetchTaskMetrics(req.user.id, start, end);
 
     // Fetch last week's metrics for comparison
-    const lastWeekStart = new Date(start);
-    lastWeekStart.setUTCDate(lastWeekStart.getUTCDate() - 7);
-    const lastWeekEnd = new Date(start);
+    const lastWeekStart = subDays(start, 7);
+    const lastWeekEnd = subDays(end, 7);
     const lastWeekMetrics = await fetchTaskMetrics(req.user.id, lastWeekStart, lastWeekEnd);
 
     // Fetch historical metrics for the last 12 weeks to calculate averages
-    const historicalStart = new Date(today);
-    historicalStart.setUTCDate(historicalStart.getUTCDate() - 84); // 12 weeks
+    const historicalStart = subDays(today, 84); // 12 weeks
     const historicalMetrics = await fetchHistoricalMetrics(req.user.id, historicalStart, end);
 
     // Calculate averages based on historical data
@@ -259,17 +276,17 @@ router.get('/weekly', authMiddleware, async (req, res) => {
       totalHoras: thisWeekMetrics.totalHoras,
       totalTareas: thisWeekMetrics.totalTareas,
       totalMonto: thisWeekMetrics.totalMonto,
-      avgTasksPerDayThisWeek: thisWeekMetrics.totalTareas / thisWeekMetrics.uniqueDays, // Tasks per day this week
-      avgHoursPerDayThisWeek: thisWeekMetrics.totalHoras / thisWeekMetrics.uniqueDays, // Hours per day this week
-      avgEarningsPerDayThisWeek: thisWeekMetrics.totalMonto / thisWeekMetrics.uniqueDays, // Earnings per day this week
-      avgTasksPerDayHistorical: Math.round(avgTasksPerDay * 100) / 100, // Historical average tasks per day
-      avgHoursPerDayHistorical: Math.round(avgHoursPerDay * 100) / 100, // Historical average hours per day
-      avgEarningsPerDayHistorical: Math.round(avgEarningsPerDay * 100) / 100, // Historical average earnings per day
-      daysConsidered: historicalMetrics.uniqueDays, // Number of days considered for the historical average
+      avgTasksPerDayThisWeek: thisWeekMetrics.totalTareas / thisWeekMetrics.uniqueDays,
+      avgHoursPerDayThisWeek: thisWeekMetrics.totalHoras / thisWeekMetrics.uniqueDays,
+      avgEarningsPerDayThisWeek: thisWeekMetrics.totalMonto / thisWeekMetrics.uniqueDays,
+      avgTasksPerDayHistorical: Math.round(avgTasksPerDay * 100) / 100,
+      avgHoursPerDayHistorical: Math.round(avgHoursPerDay * 100) / 100,
+      avgEarningsPerDayHistorical: Math.round(avgEarningsPerDay * 100) / 100,
+      daysConsidered: historicalMetrics.uniqueDays,
       productivity,
-      target: target * daysInWeek, // Total target for the week
+      target: target * daysInWeek,
       trend,
-      shortfall: Math.round(shortfall * 100) / 100, // Round to 2 decimal places
+      shortfall: Math.round(shortfall * 100) / 100,
       previousPeriod: lastWeekMetrics.totalMonto
     });
   } catch (err) {
@@ -282,20 +299,26 @@ router.get('/weekly', authMiddleware, async (req, res) => {
 router.get('/monthly', authMiddleware, async (req, res) => {
   try {
     const today = new Date();
-    const { start, end } = getDateRange('monthly', today);
+    // Fetch the user's timezone from their profile
+    const userProfile = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/profile`, {
+      headers: { Authorization: `Bearer ${req.user.token}` },
+    });
+    if (!userProfile.ok) throw new Error("Failed to fetch user profile");
+    const userData = await userProfile.json();
+    const userTimezone = userData.timezone || 'UTC';
+
+    const { start, end } = getDateRange('monthly', today, userTimezone);
 
     // Fetch this month's metrics
     const thisMonthMetrics = await fetchTaskMetrics(req.user.id, start, end);
 
     // Fetch last month's metrics for comparison
-    const lastMonthStart = new Date(start);
-    lastMonthStart.setUTCMonth(lastMonthStart.getUTCMonth() - 1);
-    const lastMonthEnd = new Date(start);
+    const lastMonthStart = subDays(start, 30); // Approximate, as months vary
+    const lastMonthEnd = subDays(end, 30);
     const lastMonthMetrics = await fetchTaskMetrics(req.user.id, lastMonthStart, lastMonthEnd);
 
     // Fetch historical metrics for the last 6 months to calculate averages
-    const historicalStart = new Date(today);
-    historicalStart.setUTCMonth(historicalStart.getUTCMonth() - 6); // 6 months
+    const historicalStart = subDays(today, 180); // 6 months
     const historicalMetrics = await fetchHistoricalMetrics(req.user.id, historicalStart, end);
 
     // Calculate averages based on historical data
@@ -327,17 +350,17 @@ router.get('/monthly', authMiddleware, async (req, res) => {
       totalHoras: thisMonthMetrics.totalHoras,
       totalTareas: thisMonthMetrics.totalTareas,
       totalMonto: thisMonthMetrics.totalMonto,
-      avgTasksPerDayThisMonth: thisMonthMetrics.totalTareas / thisMonthMetrics.uniqueDays, // Tasks per day this month
-      avgHoursPerDayThisMonth: thisMonthMetrics.totalHoras / thisMonthMetrics.uniqueDays, // Hours per day this month
-      avgEarningsPerDayThisMonth: thisMonthMetrics.totalMonto / thisMonthMetrics.uniqueDays, // Earnings per day this month
-      avgTasksPerDayHistorical: Math.round(avgTasksPerDay * 100) / 100, // Historical average tasks per day
-      avgHoursPerDayHistorical: Math.round(avgHoursPerDay * 100) / 100, // Historical average hours per day
-      avgEarningsPerDayHistorical: Math.round(avgEarningsPerDay * 100) / 100, // Historical average earnings per day
-      daysConsidered: historicalMetrics.uniqueDays, // Number of days considered for the historical average
+      avgTasksPerDayThisMonth: thisMonthMetrics.totalTareas / thisMonthMetrics.uniqueDays,
+      avgHoursPerDayThisMonth: thisMonthMetrics.totalHoras / thisMonthMetrics.uniqueDays,
+      avgEarningsPerDayThisMonth: thisMonthMetrics.totalMonto / thisMonthMetrics.uniqueDays,
+      avgTasksPerDayHistorical: Math.round(avgTasksPerDay * 100) / 100,
+      avgHoursPerDayHistorical: Math.round(avgHoursPerDay * 100) / 100,
+      avgEarningsPerDayHistorical: Math.round(avgEarningsPerDay * 100) / 100,
+      daysConsidered: historicalMetrics.uniqueDays,
       productivity,
-      target: target * daysInMonth, // Total target for the month
+      target: target * daysInMonth,
       trend,
-      shortfall: Math.round(shortfall * 100) / 100, // Round to 2 decimal places
+      shortfall: Math.round(shortfall * 100) / 100,
       previousPeriod: lastMonthMetrics.totalMonto
     });
   } catch (err) {
@@ -349,14 +372,21 @@ router.get('/monthly', authMiddleware, async (req, res) => {
 // Endpoint para obtener datos históricos (para gráficos)
 router.get('/historical', authMiddleware, async (req, res) => {
   try {
-    const period = req.query.period || 'weekly'; // 'daily', 'weekly', 'monthly'
-    const periodsBack = parseInt(req.query.periodsBack) || 5; // Number of periods to fetch
+    const period = req.query.period || 'weekly';
+    const periodsBack = parseInt(req.query.periodsBack) || 5;
 
     const today = new Date();
-    const metrics = [];
+    // Fetch the user's timezone from their profile
+    const userProfile = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/profile`, {
+      headers: { Authorization: `Bearer ${req.user.token}` },
+    });
+    if (!userProfile.ok) throw new Error("Failed to fetch user profile");
+    const userData = await userProfile.json();
+    const userTimezone = userData.timezone || 'UTC';
 
-    // Ensure we don't include future dates
-    const currentDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+    const metrics = [];
+    const currentDate = utcToZonedTime(today, userTimezone);
+    const currentDateUTC = zonedTimeToUtc(startOfDay(currentDate), userTimezone);
 
     for (let i = 0; i < periodsBack; i++) {
       const refDate = new Date(currentDate);
@@ -369,9 +399,10 @@ router.get('/historical', authMiddleware, async (req, res) => {
       }
 
       // Skip if the reference date is in the future
-      if (refDate > currentDate) continue;
+      const refDateStart = zonedTimeToUtc(startOfDay(refDate), userTimezone);
+      if (refDateStart > currentDateUTC) continue;
 
-      const { start, end } = getDateRange(period, refDate);
+      const { start, end } = getDateRange(period, refDate, userTimezone);
       const periodMetrics = await fetchTaskMetrics(req.user.id, start, end);
 
       metrics.push({
