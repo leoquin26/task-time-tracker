@@ -4,7 +4,7 @@ const mongoose = require('mongoose');
 const Task = require('../models/Task');
 const Goal = require('../models/Goal');
 const authMiddleware = require('../middleware/authMiddleware');
-const { format } = require('date-fns'); // Import format from date-fns
+const { format } = require('date-fns');
 
 /**
  * Función auxiliar para obtener el rango de fechas según el período utilizando UTC.
@@ -67,6 +67,35 @@ async function fetchTaskMetrics(userId, start, end) {
 }
 
 /**
+ * Fetch historical task count to calculate average tasks per day.
+ */
+async function fetchHistoricalTaskCount(userId, end) {
+  const metrics = await Task.aggregate([
+    {
+      $match: {
+        userId: new mongoose.Types.ObjectId(userId),
+        fecha: { $lt: end }
+      }
+    },
+    {
+      $group: {
+        _id: null,
+        totalTareas: { $sum: 1 },
+        days: { $addToSet: { $dateToString: { format: "%Y-%m-%d", date: "$fecha" } } }
+      }
+    },
+    {
+      $project: {
+        _id: 0,
+        totalTareas: 1,
+        uniqueDays: { $size: "$days" }
+      }
+    }
+  ]);
+  return metrics[0] || { totalTareas: 0, uniqueDays: 1 };
+}
+
+/**
  * Fetch goals within a date range.
  */
 async function fetchGoals(userId, start, end) {
@@ -111,6 +140,10 @@ router.get('/daily', authMiddleware, async (req, res) => {
     const yesterdayEnd = new Date(start);
     const yesterdayMetrics = await fetchTaskMetrics(req.user.id, yesterdayStart, yesterdayEnd);
 
+    // Fetch historical task count for average tasks per day
+    const historicalTasks = await fetchHistoricalTaskCount(req.user.id, end);
+    const avgTasksPerDay = historicalTasks.totalTareas / historicalTasks.uniqueDays;
+
     // Fetch goals overlapping with today
     const goals = await fetchGoals(req.user.id, start, end);
     const goalTarget = goals.length > 0 ? goals.reduce((sum, goal) => sum + goal.targetAmount, 0) : 0;
@@ -124,17 +157,21 @@ router.get('/daily', authMiddleware, async (req, res) => {
     );
 
     // Calculate trend compared to yesterday
-    const trend = yesterdayMetrics.totalMonto > 0
+    let trend = yesterdayMetrics.totalMonto > 0
       ? ((todayMetrics.totalMonto - yesterdayMetrics.totalMonto) / yesterdayMetrics.totalMonto) * 100
       : 0;
+    trend = Math.round(trend);
+    const shortfall = trend < 0 ? Math.abs(yesterdayMetrics.totalMonto - todayMetrics.totalMonto) : 0;
 
     res.json({
       totalHoras: todayMetrics.totalHoras,
       totalTareas: todayMetrics.totalTareas,
+      avgTasksPerDay: Math.round(avgTasksPerDay * 100) / 100, // Round to 2 decimal places
       totalMonto: todayMetrics.totalMonto,
       productivity,
       target,
-      trend: Math.round(trend),
+      trend,
+      shortfall: Math.round(shortfall * 100) / 100, // Round to 2 decimal places
       previousPeriod: yesterdayMetrics.totalMonto
     });
   } catch (err) {
@@ -158,6 +195,10 @@ router.get('/weekly', authMiddleware, async (req, res) => {
     const lastWeekEnd = new Date(start);
     const lastWeekMetrics = await fetchTaskMetrics(req.user.id, lastWeekStart, lastWeekEnd);
 
+    // Fetch historical task count for average tasks per day
+    const historicalTasks = await fetchHistoricalTaskCount(req.user.id, end);
+    const avgTasksPerDay = historicalTasks.totalTareas / historicalTasks.uniqueDays;
+
     // Fetch goals overlapping with this week
     const goals = await fetchGoals(req.user.id, start, end);
     const goalTarget = goals.length > 0 ? goals.reduce((sum, goal) => sum + goal.targetAmount, 0) : 0;
@@ -172,17 +213,21 @@ router.get('/weekly', authMiddleware, async (req, res) => {
     );
 
     // Calculate trend compared to last week
-    const trend = lastWeekMetrics.totalMonto > 0
+    let trend = lastWeekMetrics.totalMonto > 0
       ? ((thisWeekMetrics.totalMonto - lastWeekMetrics.totalMonto) / lastWeekMetrics.totalMonto) * 100
       : 0;
+    trend = Math.round(trend);
+    const shortfall = trend < 0 ? Math.abs(lastWeekMetrics.totalMonto - thisWeekMetrics.totalMonto) : 0;
 
     res.json({
       totalHoras: thisWeekMetrics.totalHoras,
       totalTareas: thisWeekMetrics.totalTareas,
+      avgTasksPerDay: Math.round(avgTasksPerDay * 100) / 100, // Round to 2 decimal places
       totalMonto: thisWeekMetrics.totalMonto,
       productivity,
       target: target * daysInWeek, // Total target for the week
-      trend: Math.round(trend),
+      trend,
+      shortfall: Math.round(shortfall * 100) / 100, // Round to 2 decimal places
       previousPeriod: lastWeekMetrics.totalMonto
     });
   } catch (err) {
@@ -206,6 +251,10 @@ router.get('/monthly', authMiddleware, async (req, res) => {
     const lastMonthEnd = new Date(start);
     const lastMonthMetrics = await fetchTaskMetrics(req.user.id, lastMonthStart, lastMonthEnd);
 
+    // Fetch historical task count for average tasks per day
+    const historicalTasks = await fetchHistoricalTaskCount(req.user.id, end);
+    const avgTasksPerDay = historicalTasks.totalTareas / historicalTasks.uniqueDays;
+
     // Fetch goals overlapping with this month
     const goals = await fetchGoals(req.user.id, start, end);
     const goalTarget = goals.length > 0 ? goals.reduce((sum, goal) => sum + goal.targetAmount, 0) : 0;
@@ -220,17 +269,21 @@ router.get('/monthly', authMiddleware, async (req, res) => {
     );
 
     // Calculate trend compared to last month
-    const trend = lastMonthMetrics.totalMonto > 0
+    let trend = lastMonthMetrics.totalMonto > 0
       ? ((thisMonthMetrics.totalMonto - lastMonthMetrics.totalMonto) / lastMonthMetrics.totalMonto) * 100
       : 0;
+    trend = Math.round(trend);
+    const shortfall = trend < 0 ? Math.abs(lastMonthMetrics.totalMonto - thisMonthMetrics.totalMonto) : 0;
 
     res.json({
       totalHoras: thisMonthMetrics.totalHoras,
       totalTareas: thisMonthMetrics.totalTareas,
+      avgTasksPerDay: Math.round(avgTasksPerDay * 100) / 100, // Round to 2 decimal places
       totalMonto: thisMonthMetrics.totalMonto,
       productivity,
       target: target * daysInMonth, // Total target for the month
-      trend: Math.round(trend),
+      trend,
+      shortfall: Math.round(shortfall * 100) / 100, // Round to 2 decimal places
       previousPeriod: lastMonthMetrics.totalMonto
     });
   } catch (err) {
