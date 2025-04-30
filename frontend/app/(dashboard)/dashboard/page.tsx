@@ -17,7 +17,21 @@ interface Metrics {
   productivity: number
   target: number
   trend: number
+  shortfall: number
   previousPeriod: number
+  avgTasksPerDay: number
+  avgHoursPerDay: number
+  avgEarningsPerDay: number
+  daysConsidered: number
+  avgTasksPerDayThisWeek?: number
+  avgHoursPerDayThisWeek?: number
+  avgEarningsPerDayThisWeek?: number
+  avgTasksPerDayThisMonth?: number
+  avgHoursPerDayThisMonth?: number
+  avgEarningsPerDayThisMonth?: number
+  avgTasksPerDayHistorical?: number
+  avgHoursPerDayHistorical?: number
+  avgEarningsPerDayHistorical?: number
 }
 
 interface HistoricalMetric {
@@ -25,6 +39,9 @@ interface HistoricalMetric {
   totalHoras: number
   totalTareas: number
   totalMonto: number
+  avgTasksPerDay: number
+  avgHoursPerDay: number
+  avgEarningsPerDay: number
 }
 
 // Función para convertir horas decimales a un formato legible (Hh Mm Ss)
@@ -277,7 +294,7 @@ export default function DashboardPage() {
             {/* Duración (Daily) */}
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Duration</CardTitle>
+                <CardTitle className="text-sm font-medium">Duration Today</CardTitle>
                 <Clock className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
@@ -290,13 +307,15 @@ export default function DashboardPage() {
                       : "0s"
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground">Today</p>
+                <p className="text-xs text-muted-foreground">
+                  Avg: {isLoading ? '...' : dailyMetrics ? `${formatDuration(dailyMetrics.avgHoursPerDay)}/day over ${dailyMetrics.daysConsidered} days` : '0s'}
+                </p>
               </CardContent>
             </Card>
             {/* Tasks Completed (Daily) */}
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Tasks Completed</CardTitle>
+                <CardTitle className="text-sm font-medium">Tasks Completed Today</CardTitle>
                 <ListTodo className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
@@ -307,13 +326,15 @@ export default function DashboardPage() {
                     dailyMetrics?.totalTareas || 0
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground">Today</p>
+                <p className="text-xs text-muted-foreground">
+                  Avg: {isLoading ? '...' : dailyMetrics ? `${dailyMetrics.avgTasksPerDay.toFixed(2)}/day over ${dailyMetrics.daysConsidered} days` : '0'}
+                </p>
               </CardContent>
             </Card>
             {/* Earnings (Daily) */}
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Earnings</CardTitle>
+                <CardTitle className="text-sm font-medium">Earnings Today</CardTitle>
                 <DollarSign className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
@@ -324,7 +345,9 @@ export default function DashboardPage() {
                     `$${dailyMetrics?.totalMonto || 0}`
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground">Today</p>
+                <p className="text-xs text-muted-foreground">
+                  Avg: {isLoading ? '...' : dailyMetrics ? `$${dailyMetrics.avgEarningsPerDay.toFixed(2)}/day over ${dailyMetrics.daysConsidered} days` : '$0'}
+                </p>
               </CardContent>
             </Card>
             {/* Productivity (Daily) */}
@@ -367,6 +390,7 @@ export default function DashboardPage() {
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Yesterday: ${dailyMetrics?.previousPeriod.toFixed(2) || 0}
+                  {(dailyMetrics?.trend ?? 0) < 0 && dailyMetrics?.shortfall ? ` (Need $${dailyMetrics.shortfall.toFixed(2)} to match)` : ''}
                 </p>
               </CardContent>
             </Card>
@@ -384,6 +408,7 @@ export default function DashboardPage() {
                       <Tooltip />
                       <Legend />
                       <Line type="monotone" dataKey="totalMonto" name="Earnings ($)" stroke="#8884d8" />
+                      <Line type="monotone" dataKey="avgEarningsPerDay" name="Avg Earnings/Day ($)" stroke="#82ca9d" />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -398,7 +423,7 @@ export default function DashboardPage() {
             {/* Duración (Weekly) */}
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Duration</CardTitle>
+                <CardTitle className="text-sm font-medium">Total Duration This Week</CardTitle>
                 <Clock className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
@@ -411,13 +436,18 @@ export default function DashboardPage() {
                       : "0s"
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground">This Week</p>
+                <p className="text-xs text-muted-foreground">
+                  Avg: {isLoading ? '...' : weeklyMetrics ? `${formatDuration(weeklyMetrics.avgHoursPerDayThisWeek || 0)}/day this week` : '0s'}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Historical Avg: {isLoading ? '...' : weeklyMetrics ? `${formatDuration(weeklyMetrics.avgHoursPerDayHistorical || 0)}/day over ${weeklyMetrics.daysConsidered} days` : '0s'}
+                </p>
               </CardContent>
             </Card>
             {/* Tasks Completed (Weekly) */}
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Tasks Completed</CardTitle>
+                <CardTitle className="text-sm font-medium">Tasks Completed This Week</CardTitle>
                 <ListTodo className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
@@ -428,13 +458,18 @@ export default function DashboardPage() {
                     weeklyMetrics?.totalTareas || 0
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground">This Week</p>
+                <p className="text-xs text-muted-foreground">
+                  Avg: {isLoading ? '...' : weeklyMetrics ? `${(weeklyMetrics.avgTasksPerDayThisWeek || 0).toFixed(2)}/day this week` : '0'}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Historical Avg: {isLoading ? '...' : weeklyMetrics ? `${(weeklyMetrics.avgTasksPerDayHistorical || 0).toFixed(2)}/day over ${weeklyMetrics.daysConsidered} days` : '0'}
+                </p>
               </CardContent>
             </Card>
             {/* Earnings (Weekly) */}
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Earnings</CardTitle>
+                <CardTitle className="text-sm font-medium">Earnings This Week</CardTitle>
                 <DollarSign className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
@@ -445,7 +480,12 @@ export default function DashboardPage() {
                     `$${weeklyMetrics?.totalMonto || 0}`
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground">This Week</p>
+                <p className="text-xs text-muted-foreground">
+                  Avg: {isLoading ? '...' : weeklyMetrics ? `$${(weeklyMetrics.avgEarningsPerDayThisWeek || 0).toFixed(2)}/day this week` : '$0'}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Historical Avg: {isLoading ? '...' : weeklyMetrics ? `$${(weeklyMetrics.avgEarningsPerDayHistorical || 0).toFixed(2)}/day over ${weeklyMetrics.daysConsidered} days` : '$0'}
+                </p>
               </CardContent>
             </Card>
             {/* Productivity (Weekly) */}
@@ -488,6 +528,7 @@ export default function DashboardPage() {
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Last Week: ${weeklyMetrics?.previousPeriod.toFixed(2) || 0}
+                  {(weeklyMetrics?.trend ?? 0) < 0 && weeklyMetrics?.shortfall ? ` (Need $${weeklyMetrics.shortfall.toFixed(2)} to match)` : ''}
                 </p>
               </CardContent>
             </Card>
@@ -504,7 +545,8 @@ export default function DashboardPage() {
                       <YAxis />
                       <Tooltip />
                       <Legend />
-                      <Bar dataKey="totalMonto" name="Earnings ($)" fill="#8884d8" />
+                      <Bar dataKey="totalMonto" name="Total Earnings ($)" fill="#8884d8" />
+                      <Bar dataKey="avgEarningsPerDay" name="Avg Earnings/Day ($)" fill="#82ca9d" />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -519,7 +561,7 @@ export default function DashboardPage() {
             {/* Duración (Monthly) */}
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Duration</CardTitle>
+                <CardTitle className="text-sm font-medium">Total Duration This Month</CardTitle>
                 <Clock className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
@@ -532,13 +574,18 @@ export default function DashboardPage() {
                       : "0s"
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground">This Month</p>
+                <p className="text-xs text-muted-foreground">
+                  Avg: {isLoading ? '...' : monthlyMetrics ? `${formatDuration(monthlyMetrics.avgHoursPerDayThisMonth || 0)}/day this month` : '0s'}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Historical Avg: {isLoading ? '...' : monthlyMetrics ? `${formatDuration(monthlyMetrics.avgHoursPerDayHistorical || 0)}/day over ${monthlyMetrics.daysConsidered} days` : '0s'}
+                </p>
               </CardContent>
             </Card>
             {/* Tasks Completed (Monthly) */}
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Tasks Completed</CardTitle>
+                <CardTitle className="text-sm font-medium">Tasks Completed This Month</CardTitle>
                 <ListTodo className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
@@ -549,13 +596,18 @@ export default function DashboardPage() {
                     monthlyMetrics?.totalTareas || 0
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground">This Month</p>
+                <p className="text-xs text-muted-foreground">
+                  Avg: {isLoading ? '...' : monthlyMetrics ? `${(monthlyMetrics.avgTasksPerDayThisMonth || 0).toFixed(2)}/day this month` : '0'}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Historical Avg: {isLoading ? '...' : monthlyMetrics ? `${(monthlyMetrics.avgTasksPerDayHistorical || 0).toFixed(2)}/day over ${monthlyMetrics.daysConsidered} days` : '0'}
+                </p>
               </CardContent>
             </Card>
             {/* Earnings (Monthly) */}
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Earnings</CardTitle>
+                <CardTitle className="text-sm font-medium">Earnings This Month</CardTitle>
                 <DollarSign className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
@@ -566,7 +618,12 @@ export default function DashboardPage() {
                     `$${monthlyMetrics?.totalMonto || 0}`
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground">This Month</p>
+                <p className="text-xs text-muted-foreground">
+                  Avg: {isLoading ? '...' : monthlyMetrics ? `$${(monthlyMetrics.avgEarningsPerDayThisMonth || 0).toFixed(2)}/day this month` : '$0'}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Historical Avg: {isLoading ? '...' : monthlyMetrics ? `$${(monthlyMetrics.avgEarningsPerDayHistorical || 0).toFixed(2)}/day over ${monthlyMetrics.daysConsidered} days` : '$0'}
+                </p>
               </CardContent>
             </Card>
             {/* Productivity (Monthly) */}
@@ -609,6 +666,7 @@ export default function DashboardPage() {
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Last Month: ${monthlyMetrics?.previousPeriod.toFixed(2) || 0}
+                  {(monthlyMetrics?.trend ?? 0) < 0 && monthlyMetrics?.shortfall ? ` (Need $${monthlyMetrics.shortfall.toFixed(2)} to match)` : ''}
                 </p>
               </CardContent>
             </Card>
@@ -625,7 +683,8 @@ export default function DashboardPage() {
                       <YAxis />
                       <Tooltip />
                       <Legend />
-                      <Bar dataKey="totalMonto" name="Earnings ($)" fill="#8884d8" />
+                      <Bar dataKey="totalMonto" name="Total Earnings ($)" fill="#8884d8" />
+                      <Bar dataKey="avgEarningsPerDay" name="Avg Earnings/Day ($)" fill="#82ca9d" />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>

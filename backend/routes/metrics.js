@@ -52,7 +52,8 @@ async function fetchTaskMetrics(userId, start, end) {
           _id: null,
           totalHoras: { $sum: "$horas" },
           totalTareas: { $sum: 1 },
-          totalMonto: { $sum: "$monto" }
+          totalMonto: { $sum: "$monto" },
+          days: { $addToSet: { $dateToString: { format: "%Y-%m-%d", date: "$fecha" } } }
         }
       },
       {
@@ -60,48 +61,53 @@ async function fetchTaskMetrics(userId, start, end) {
           _id: 0,
           totalHoras: { $round: ["$totalHoras", 6] },
           totalTareas: 1,
-          totalMonto: { $round: ["$totalMonto", 2] }
+          totalMonto: { $round: ["$totalMonto", 2] },
+          uniqueDays: { $size: "$days" }
         }
       }
     ]);
-    return metrics[0] || { totalHoras: 0, totalTareas: 0, totalMonto: 0 };
+    return metrics[0] || { totalHoras: 0, totalTareas: 0, totalMonto: 0, uniqueDays: 1 };
   } catch (err) {
     console.error('Error fetching task metrics:', err.message);
-    return { totalHoras: 0, totalTareas: 0, totalMonto: 0 };
+    return { totalHoras: 0, totalTareas: 0, totalMonto: 0, uniqueDays: 1 };
   }
 }
 
 /**
- * Fetch historical task count to calculate average tasks per day.
+ * Fetch historical task count to calculate average tasks, hours, and earnings per day.
  */
-async function fetchHistoricalTaskCount(userId, end) {
+async function fetchHistoricalMetrics(userId, start, end) {
   try {
     const metrics = await Task.aggregate([
       {
         $match: {
           userId: new mongoose.Types.ObjectId(userId),
-          fecha: { $lt: end }
+          fecha: { $gte: start, $lt: end }
         }
       },
       {
         $group: {
           _id: null,
+          totalHoras: { $sum: "$horas" },
           totalTareas: { $sum: 1 },
+          totalMonto: { $sum: "$monto" },
           days: { $addToSet: { $dateToString: { format: "%Y-%m-%d", date: "$fecha" } } }
         }
       },
       {
         $project: {
           _id: 0,
+          totalHoras: { $round: ["$totalHoras", 6] },
           totalTareas: 1,
+          totalMonto: { $round: ["$totalMonto", 2] },
           uniqueDays: { $size: "$days" }
         }
       }
     ]);
-    return metrics[0] || { totalTareas: 0, uniqueDays: 1 };
+    return metrics[0] || { totalHoras: 0, totalTareas: 0, totalMonto: 0, uniqueDays: 1 };
   } catch (err) {
-    console.error('Error fetching historical task count:', err.message);
-    return { totalTareas: 0, uniqueDays: 1 };
+    console.error('Error fetching historical metrics:', err.message);
+    return { totalHoras: 0, totalTareas: 0, totalMonto: 0, uniqueDays: 1 };
   }
 }
 
@@ -155,9 +161,15 @@ router.get('/daily', authMiddleware, async (req, res) => {
     const yesterdayEnd = new Date(start);
     const yesterdayMetrics = await fetchTaskMetrics(req.user.id, yesterdayStart, yesterdayEnd);
 
-    // Fetch historical task count for average tasks per day
-    const historicalTasks = await fetchHistoricalTaskCount(req.user.id, end);
-    const avgTasksPerDay = historicalTasks.totalTareas / historicalTasks.uniqueDays;
+    // Fetch historical metrics for the last 30 days to calculate averages
+    const historicalStart = new Date(today);
+    historicalStart.setUTCDate(historicalStart.getUTCDate() - 30);
+    const historicalMetrics = await fetchHistoricalMetrics(req.user.id, historicalStart, end);
+
+    // Calculate averages based on historical data
+    const avgTasksPerDay = historicalMetrics.totalTareas / historicalMetrics.uniqueDays;
+    const avgHoursPerDay = historicalMetrics.totalHoras / historicalMetrics.uniqueDays;
+    const avgEarningsPerDay = historicalMetrics.totalMonto / historicalMetrics.uniqueDays;
 
     // Fetch goals overlapping with today
     const goals = await fetchGoals(req.user.id, start, end);
@@ -181,13 +193,16 @@ router.get('/daily', authMiddleware, async (req, res) => {
     res.json({
       totalHoras: todayMetrics.totalHoras,
       totalTareas: todayMetrics.totalTareas,
-      avgTasksPerDay: Math.round(avgTasksPerDay * 100) / 100, // Round to 2 decimal places
       totalMonto: todayMetrics.totalMonto,
       productivity,
       target,
       trend,
       shortfall: Math.round(shortfall * 100) / 100, // Round to 2 decimal places
-      previousPeriod: yesterdayMetrics.totalMonto
+      previousPeriod: yesterdayMetrics.totalMonto,
+      avgTasksPerDay: Math.round(avgTasksPerDay * 100) / 100, // Average tasks per day over the last 30 days
+      avgHoursPerDay: Math.round(avgHoursPerDay * 100) / 100, // Average hours per day over the last 30 days
+      avgEarningsPerDay: Math.round(avgEarningsPerDay * 100) / 100, // Average earnings per day over the last 30 days
+      daysConsidered: historicalMetrics.uniqueDays // Number of days considered for the average
     });
   } catch (err) {
     console.error('Error in /daily endpoint:', err.message);
@@ -210,9 +225,15 @@ router.get('/weekly', authMiddleware, async (req, res) => {
     const lastWeekEnd = new Date(start);
     const lastWeekMetrics = await fetchTaskMetrics(req.user.id, lastWeekStart, lastWeekEnd);
 
-    // Fetch historical task count for average tasks per day
-    const historicalTasks = await fetchHistoricalTaskCount(req.user.id, end);
-    const avgTasksPerDay = historicalTasks.totalTareas / historicalTasks.uniqueDays;
+    // Fetch historical metrics for the last 12 weeks to calculate averages
+    const historicalStart = new Date(today);
+    historicalStart.setUTCDate(historicalStart.getUTCDate() - 84); // 12 weeks
+    const historicalMetrics = await fetchHistoricalMetrics(req.user.id, historicalStart, end);
+
+    // Calculate averages based on historical data
+    const avgTasksPerDay = historicalMetrics.totalTareas / historicalMetrics.uniqueDays;
+    const avgHoursPerDay = historicalMetrics.totalHoras / historicalMetrics.uniqueDays;
+    const avgEarningsPerDay = historicalMetrics.totalMonto / historicalMetrics.uniqueDays;
 
     // Fetch goals overlapping with this week
     const goals = await fetchGoals(req.user.id, start, end);
@@ -237,8 +258,14 @@ router.get('/weekly', authMiddleware, async (req, res) => {
     res.json({
       totalHoras: thisWeekMetrics.totalHoras,
       totalTareas: thisWeekMetrics.totalTareas,
-      avgTasksPerDay: Math.round(avgTasksPerDay * 100) / 100, // Round to 2 decimal places
       totalMonto: thisWeekMetrics.totalMonto,
+      avgTasksPerDayThisWeek: thisWeekMetrics.totalTareas / thisWeekMetrics.uniqueDays, // Tasks per day this week
+      avgHoursPerDayThisWeek: thisWeekMetrics.totalHoras / thisWeekMetrics.uniqueDays, // Hours per day this week
+      avgEarningsPerDayThisWeek: thisWeekMetrics.totalMonto / thisWeekMetrics.uniqueDays, // Earnings per day this week
+      avgTasksPerDayHistorical: Math.round(avgTasksPerDay * 100) / 100, // Historical average tasks per day
+      avgHoursPerDayHistorical: Math.round(avgHoursPerDay * 100) / 100, // Historical average hours per day
+      avgEarningsPerDayHistorical: Math.round(avgEarningsPerDay * 100) / 100, // Historical average earnings per day
+      daysConsidered: historicalMetrics.uniqueDays, // Number of days considered for the historical average
       productivity,
       target: target * daysInWeek, // Total target for the week
       trend,
@@ -266,9 +293,15 @@ router.get('/monthly', authMiddleware, async (req, res) => {
     const lastMonthEnd = new Date(start);
     const lastMonthMetrics = await fetchTaskMetrics(req.user.id, lastMonthStart, lastMonthEnd);
 
-    // Fetch historical task count for average tasks per day
-    const historicalTasks = await fetchHistoricalTaskCount(req.user.id, end);
-    const avgTasksPerDay = historicalTasks.totalTareas / historicalTasks.uniqueDays;
+    // Fetch historical metrics for the last 6 months to calculate averages
+    const historicalStart = new Date(today);
+    historicalStart.setUTCMonth(historicalStart.getUTCMonth() - 6); // 6 months
+    const historicalMetrics = await fetchHistoricalMetrics(req.user.id, historicalStart, end);
+
+    // Calculate averages based on historical data
+    const avgTasksPerDay = historicalMetrics.totalTareas / historicalMetrics.uniqueDays;
+    const avgHoursPerDay = historicalMetrics.totalHoras / historicalMetrics.uniqueDays;
+    const avgEarningsPerDay = historicalMetrics.totalMonto / historicalMetrics.uniqueDays;
 
     // Fetch goals overlapping with this month
     const goals = await fetchGoals(req.user.id, start, end);
@@ -293,8 +326,14 @@ router.get('/monthly', authMiddleware, async (req, res) => {
     res.json({
       totalHoras: thisMonthMetrics.totalHoras,
       totalTareas: thisMonthMetrics.totalTareas,
-      avgTasksPerDay: Math.round(avgTasksPerDay * 100) / 100, // Round to 2 decimal places
       totalMonto: thisMonthMetrics.totalMonto,
+      avgTasksPerDayThisMonth: thisMonthMetrics.totalTareas / thisMonthMetrics.uniqueDays, // Tasks per day this month
+      avgHoursPerDayThisMonth: thisMonthMetrics.totalHoras / thisMonthMetrics.uniqueDays, // Hours per day this month
+      avgEarningsPerDayThisMonth: thisMonthMetrics.totalMonto / thisMonthMetrics.uniqueDays, // Earnings per day this month
+      avgTasksPerDayHistorical: Math.round(avgTasksPerDay * 100) / 100, // Historical average tasks per day
+      avgHoursPerDayHistorical: Math.round(avgHoursPerDay * 100) / 100, // Historical average hours per day
+      avgEarningsPerDayHistorical: Math.round(avgEarningsPerDay * 100) / 100, // Historical average earnings per day
+      daysConsidered: historicalMetrics.uniqueDays, // Number of days considered for the historical average
       productivity,
       target: target * daysInMonth, // Total target for the month
       trend,
@@ -343,7 +382,10 @@ router.get('/historical', authMiddleware, async (req, res) => {
           : format(start, 'yyyy-MM'),
         totalHoras: periodMetrics.totalHoras,
         totalTareas: periodMetrics.totalTareas,
-        totalMonto: periodMetrics.totalMonto
+        totalMonto: periodMetrics.totalMonto,
+        avgTasksPerDay: periodMetrics.totalTareas / periodMetrics.uniqueDays,
+        avgHoursPerDay: periodMetrics.totalHoras / periodMetrics.uniqueDays,
+        avgEarningsPerDay: periodMetrics.totalMonto / periodMetrics.uniqueDays
       });
     }
 
